@@ -60,11 +60,17 @@ sudo mv ghostctl-darwin-amd64 /usr/local/bin/ghostctl
 # Add to PATH
 ```
 
-### Method 3: Using Homebrew (macOS)
+### Method 3: Using Homebrew (macOS/Linux)
 
 ```bash
-brew tap ghostcluster-ai/ghostctl
+brew tap ghostcluster-ai/ghostctl https://github.com/ghostcluster-ai/ghostctl.git
 brew install ghostctl
+```
+
+Or install directly from the repository:
+
+```bash
+brew install ghostcluster-ai/ghostctl/ghostctl
 ```
 
 ### Method 4: Using Package Managers
