@@ -1,0 +1,43 @@
+# Example ghostctl Configuration
+#
+# This file should be located at: $HOME/.ghost/config.yaml
+#
+# You can also override the config file path using:
+#   export GHOSTCTL_CONFIG=/path/to/custom/config.yaml
+
+# API Server endpoint for Ghostcluster controller
+apiServer: "localhost:8080"
+
+# Authentication token for API access
+# You can also set this via environment variable:
+#   export GHOSTCTL_AUTH_TOKEN=your-token
+authToken: ""
+
+# Default cluster template to use when not specified
+defaultTemplate: "default"
+
+# Default time-to-live for new clusters
+# Formats: 30m, 1h, 2h, 1d, etc.
+defaultTTL: "1h"
+
+# Kubernetes namespace for Ghostcluster resources
+namespace: "ghostcluster"
+
+# Logging level: debug, info, warn, error
+# Can also be set via: export GHOSTCTL_LOG_LEVEL=debug
+logLevel: "info"
+
+# Cloud provider: local, gcp, aws, azure
+cloudProvider: "local"
+
+# GCP Project ID (if using GCP)
+projectID: ""
+
+# AWS Region (if using AWS)
+# awsRegion: "us-west-2"
+
+# Custom metadata key-value pairs
+metadata:
+  # Add any custom metadata here
+  # team: "ml-platform"
+  # environment: "staging"
