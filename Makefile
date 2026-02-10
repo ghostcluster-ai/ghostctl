@@ -100,10 +100,16 @@ deps: ## Download dependencies
 	@$(GO) mod tidy
 	@echo "Dependencies updated"
 
+verify-deps: ## Verify required runtime dependencies are installed
+	@echo "Verifying runtime dependencies..."
+	@which vcluster > /dev/null || (echo "❌ vcluster CLI not found. Install with: brew install loft-sh/loft/vcluster" && exit 1)
+	@which kubectl > /dev/null || (echo "❌ kubectl not found. Install with: brew install kubernetes-cli" && exit 1)
+	@echo "✓ All dependencies verified"
+
 version: ## Display version information
 	@echo "ghostctl version $(VERSION)"
 	@echo "Commit: $(COMMIT)"
 	@echo "Build time: $(BUILD_TIME)"
 
-all: clean fmt vet lint test build ## Run all checks and build
+all: verify-deps clean fmt vet lint test build ## Run all checks, verify dependencies, and build
 	@echo "All tasks completed"

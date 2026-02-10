@@ -7,6 +7,7 @@ class Ghostctl < Formula
   license "Apache-2.0"
 
   depends_on "go" => :build
+  depends_on "vcluster"
 
   def install
     # Build the binary
