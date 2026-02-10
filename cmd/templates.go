@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"text/tabwriter"
 
 	"github.com/ghostcluster-ai/ghostctl/internal/cluster"
@@ -87,7 +88,7 @@ func runTemplatesCmd(cmd *cobra.Command, args []string) error {
 }
 
 func displayTemplatesList(templates []*cluster.Template, filter string) {
-	w := tabwriter.NewWriter(fmt.Stdout, 0, 0, 2, ' ', 0)
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	defer w.Flush()
 
 	fmt.Fprintln(w, "NAME\tDESCRIPTION\tCPU\tMEMORY\tGPU\tCOST/HOUR")

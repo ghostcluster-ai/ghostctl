@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/ghostcluster-ai/ghostctl/internal/cluster"
 	"github.com/ghostcluster-ai/ghostctl/internal/telemetry"
@@ -121,7 +122,7 @@ func runLogsCmd(cmd *cobra.Command, args []string) error {
 	defer logStream.Close()
 
 	// Stream logs to stdout
-	if _, err := io.Copy(fmt.Stdout, logStream); err != nil {
+	if _, err := io.Copy(os.Stdout, logStream); err != nil {
 		logger.Error("Failed to stream logs", "error", err)
 		return fmt.Errorf("failed to stream logs: %w", err)
 	}

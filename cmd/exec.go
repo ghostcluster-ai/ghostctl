@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/ghostcluster-ai/ghostctl/internal/cluster"
@@ -93,7 +94,7 @@ func runExecCmd(cmd *cobra.Command, args []string) error {
 	}
 
 	if result.Stderr != "" {
-		fmt.Fprintf(fmt.Stderr(), "%s", result.Stderr)
+		fmt.Fprint(os.Stderr, result.Stderr)
 	}
 
 	if result.ExitCode != 0 {

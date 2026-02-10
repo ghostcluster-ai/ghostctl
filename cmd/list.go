@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"text/tabwriter"
 
 	"github.com/ghostcluster-ai/ghostctl/internal/cluster"
@@ -95,7 +96,7 @@ func runListCmd(cmd *cobra.Command, args []string) error {
 }
 
 func displayClustersTable(clusters []*cluster.ClusterInfo) {
-	w := tabwriter.NewWriter(fmt.Stdout, 0, 0, 2, ' ', 0)
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	defer w.Flush()
 
 	// Header
@@ -118,7 +119,7 @@ func displayClustersTable(clusters []*cluster.ClusterInfo) {
 
 func displayClustersJSON(clusters []*cluster.ClusterInfo) error {
 	// JSON formatting would be implemented here
-	fmt.Println("JSON output format not yet implemented")
+	fmt.Fprintln(os.Stdout, "JSON output format not yet implemented")
 	return nil
 }
 
