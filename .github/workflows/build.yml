@@ -14,7 +14,7 @@ jobs:
         go-version: ['1.20', '1.21']
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Set up Go
       uses: actions/setup-go@v4
@@ -22,7 +22,7 @@ jobs:
         go-version: ${{ matrix.go-version }}
     
     - name: Cache go modules
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/go/pkg/mod
         key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
@@ -40,7 +40,7 @@ jobs:
       run: make lint
     
     - name: Upload coverage
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v4
       with:
         files: ./coverage.out
 
@@ -49,7 +49,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Set up Go
       uses: actions/setup-go@v4
@@ -63,7 +63,7 @@ jobs:
         make build-windows
     
     - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: binaries
         path: bin/
