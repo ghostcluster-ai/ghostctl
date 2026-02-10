@@ -17,7 +17,7 @@ func ParseDuration(durationStr string) (time.Duration, error) {
 		`^(\d+)s$`: "${1}s", // seconds
 	}
 
-	for pattern, replacement := range patterns {
+	for pattern := range patterns {
 		if matched, _ := regexp.MatchString(pattern, durationStr); matched {
 			// Use time.ParseDuration for standard formats
 			return time.ParseDuration(durationStr)
@@ -34,18 +34,16 @@ func FormatBytes(bytes int64) string {
 		return fmt.Sprintf("%d B", bytes)
 	}
 
-	div, exp := int64(unit), 0
-	for n := bytes / unit; n >= unit; n /= unit {
-		div *= unit
+	units := []string{"B", "KB", "MB", "GB", "TB"}
+	size := float64(bytes)
+	exp := 0
+
+	for size >= unit && exp < len(units)-1 {
+		size /= unit
 		exp++
 	}
 
-	units := []string{"B", "KB", "MB", "GB", "TB"}
-	if exp >= len(units) {
-		exp = len(units) - 1
-	}
-
-	return fmt.Sprintf("%.2f %s", float64(bytes)/float64(div), units[exp])
+	return fmt.Sprintf("%.2f %s", size, units[exp])
 }
 
 // ParseMemory parses memory string like "4Gi", "512Mi", "1024"
