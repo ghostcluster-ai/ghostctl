@@ -59,6 +59,7 @@ func init() {
 		listCmd,
 		statusCmd,
 		logsCmd,
+		connectCmd,
 		execCmd,
 		templatesCmd,
 	)

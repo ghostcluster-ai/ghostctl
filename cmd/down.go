@@ -1,36 +1,34 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
+	"strings"
 
-	"github.com/ghostcluster-ai/ghostctl/internal/cluster"
+	"github.com/ghostcluster-ai/ghostctl/internal/kubeconfig"
+	"github.com/ghostcluster-ai/ghostctl/internal/metadata"
 	"github.com/ghostcluster-ai/ghostctl/internal/telemetry"
+	"github.com/ghostcluster-ai/ghostctl/internal/vcluster"
 	"github.com/spf13/cobra"
 )
 
 var downCmd = &cobra.Command{
 	Use:   "down <cluster-name>",
-	Short: "Destroy an ephemeral cluster",
-	Long: `Destroy and remove an ephemeral vCluster.
+	Short: "Destroy an ephemeral vCluster",
+	Long: `Destroy and remove a virtual Kubernetes cluster.
 
-This command will:
-  - Stop all running workloads in the cluster
-  - Remove persistent volumes and data
-  - Delete the cluster from the host
-  - Clean up networking and RBAC resources
+This command will delete the vCluster from the Kubernetes host cluster
+and clean up local metadata and kubeconfig files.
 
 Examples:
-  ghostctl down my-cluster                 # Destroy cluster
-  ghostctl down my-cluster --force         # Force destroy without confirmation
-  ghostctl down my-cluster --drain-timeout 2m # Wait 2 minutes for graceful termination`,
+  ghostctl down my-cluster              # Destroy cluster with confirmation
+  ghostctl down my-cluster --force      # Force destroy without confirmation`,
 	Args: cobra.ExactArgs(1),
 	RunE: runDownCmd,
 }
 
 var (
-	force         bool
-	drainTimeout  string
-	deleteStorage bool
+	force bool
 )
 
 func init() {
@@ -38,26 +36,37 @@ func init() {
 		&force, "force", false,
 		"force destroy without confirmation",
 	)
-	downCmd.Flags().StringVar(
-		&drainTimeout, "drain-timeout", "1m",
-		"timeout for graceful pod termination",
-	)
-	downCmd.Flags().BoolVar(
-		&deleteStorage, "delete-storage", true,
-		"delete persistent volumes with the cluster",
-	)
 }
 
 func runDownCmd(cmd *cobra.Command, args []string) error {
 	logger := telemetry.GetLogger()
 	clusterName := args[0]
 
-	logger.Info("Destroying cluster", "name", clusterName)
+	// Initialize metadata store
+	metaStore, err := metadata.NewStore()
+	if err != nil {
+		logger.Error("Failed to initialize metadata store", "error", err)
+		return fmt.Errorf("failed to initialize metadata store: %w", err)
+	}
 
+	// Check if cluster exists in metadata
+	meta, err := metaStore.Get(clusterName)
+	if err != nil {
+		logger.Error("Cluster not found", "name", clusterName)
+		return fmt.Errorf("cluster %q not found in local registry", clusterName)
+	}
+
+	logger.Info("Destroying vCluster", "name", clusterName, "namespace", meta.Namespace)
+
+	// Confirm deletion
 	if !force {
-		fmt.Printf("Are you sure you want to destroy cluster '%s'? (y/n): ", clusterName)
-		var response string
-		_, _ = fmt.Scanln(&response) // nolint:errcheck
+		fmt.Printf("Are you sure you want to destroy cluster '%s'? This cannot be undone. (y/n): ", clusterName)
+		reader := bufio.NewReader(cmd.InOrStdin())
+		response, err := reader.ReadString('\n')
+		if err != nil {
+			return err
+		}
+		response = strings.TrimSpace(strings.ToLower(response))
 		if response != "y" && response != "yes" {
 			logger.Info("Cluster destruction cancelled")
 			fmt.Println("Cancelled")
@@ -65,22 +74,29 @@ func runDownCmd(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Initialize cluster manager
-	cm := cluster.NewClusterManager()
-
-	// Delete cluster
-	logger.Info("Deleting cluster resources", "name", clusterName)
-	deleteOpts := &cluster.DeleteOptions{
-		DrainTimeout:  drainTimeout,
-		DeleteStorage: deleteStorage,
+	// Delete the vCluster
+	logger.Info("Deleting vCluster from Kubernetes")
+	if err := vcluster.Delete(clusterName, meta.Namespace); err != nil {
+		logger.Error("Failed to delete vCluster", "error", err)
+		return fmt.Errorf("failed to delete vCluster: %w", err)
 	}
 
-	if err := cm.DeleteCluster(clusterName, deleteOpts); err != nil {
-		logger.Error("Failed to delete cluster", "error", err)
-		return fmt.Errorf("failed to delete cluster: %w", err)
+	// Delete kubeconfig file
+	logger.Info("Cleaning up kubeconfig")
+	kubeMgr, err := kubeconfig.NewManager()
+	if err != nil {
+		logger.Warn("Failed to create kubeconfig manager, skipping cleanup", "error", err)
+	} else {
+		_ = kubeMgr.Delete(clusterName)
 	}
 
-	logger.Info("✓ Cluster destroyed successfully", "name", clusterName)
+	// Remove from metadata store
+	if err := metaStore.Remove(clusterName); err != nil {
+		logger.Error("Failed to remove cluster metadata", "error", err)
+		// Don't fail here, cluster was deleted from k8s
+	}
+
+	logger.Info("✓ vCluster destroyed successfully", "name", clusterName)
 	fmt.Printf("✓ Cluster '%s' has been destroyed\n", clusterName)
 
 	return nil

@@ -2,83 +2,54 @@ package cmd
 
 import (
 	"fmt"
-	"io"
 	"os"
 
-	"github.com/ghostcluster-ai/ghostctl/internal/cluster"
+	"github.com/ghostcluster-ai/ghostctl/internal/kubeconfig"
+	"github.com/ghostcluster-ai/ghostctl/internal/metadata"
+	"github.com/ghostcluster-ai/ghostctl/internal/shell"
 	"github.com/ghostcluster-ai/ghostctl/internal/telemetry"
 	"github.com/spf13/cobra"
 )
 
 var logsCmd = &cobra.Command{
 	Use:   "logs <cluster-name> [pod-name]",
-	Short: "Stream logs from a cluster",
-	Long: `View and stream logs from a cluster or a specific pod.
+	Short: "Stream logs from a vCluster pod",
+	Long: `View and stream logs from pods in a vCluster.
 
-By default, streams logs from all pods in the cluster. You can filter by:
-  - Pod name (exact or prefix match)
-  - Namespace
-  - Label selectors
-  - Previous logs (from crashed containers)
+Uses kubectl logs under the hood, passing the appropriate kubeconfig.
 
 Examples:
-  ghostctl logs my-cluster                # Stream logs from all pods
-  ghostctl logs my-cluster my-pod         # Stream logs from specific pod
-  ghostctl logs my-cluster --namespace kube-system # Logs from system namespace
-  ghostctl logs my-cluster my-pod --tail 100       # Last 100 lines
-  ghostctl logs my-cluster --follow=false --since 1h # Logs from last hour`,
+  ghostctl logs my-cluster                               # Show available pods
+  ghostctl logs my-cluster my-pod -f                     # Stream pod logs
+  ghostctl logs my-cluster my-pod --tail 100             # Show last 100 lines
+  ghostctl logs my-cluster my-pod -n default             # From specific namespace`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: runLogsCmd,
 }
 
 var (
 	logsNamespace string
-	logsPodLabel  string
-	logsContainer string
 	follow        bool
 	tail          int
 	since         string
-	timestamps    bool
-	previous      bool
-	allContainers bool
 )
 
 func init() {
-	logsCmd.Flags().StringVar(
-		&logsNamespace, "namespace", "",
-		"namespace to get logs from (empty = all namespaces)",
-	)
-	logsCmd.Flags().StringVar(
-		&logsPodLabel, "labels", "",
-		"label selector for pods (e.g., app=myapp)",
-	)
-	logsCmd.Flags().StringVar(
-		&logsContainer, "container", "",
-		"specific container name",
+	logsCmd.Flags().StringVarP(
+		&logsNamespace, "namespace", "n", "default",
+		"namespace to get logs from",
 	)
 	logsCmd.Flags().BoolVarP(
-		&follow, "follow", "f", true,
+		&follow, "follow", "f", false,
 		"follow log stream",
 	)
 	logsCmd.Flags().IntVar(
-		&tail, "tail", 10,
+		&tail, "tail", -1,
 		"number of recent log lines to display",
 	)
 	logsCmd.Flags().StringVar(
 		&since, "since", "",
 		"show logs since time (e.g., 1h, 30m, 10s)",
-	)
-	logsCmd.Flags().BoolVar(
-		&timestamps, "timestamps", false,
-		"include timestamps in log output",
-	)
-	logsCmd.Flags().BoolVar(
-		&previous, "previous", false,
-		"show logs from previous container instance",
-	)
-	logsCmd.Flags().BoolVar(
-		&allContainers, "all-containers", false,
-		"show logs from all containers",
 	)
 }
 
@@ -94,37 +65,69 @@ func runLogsCmd(cmd *cobra.Command, args []string) error {
 	logger.Info("Fetching cluster logs",
 		"cluster", clusterName,
 		"pod", podName,
-		"follow", follow,
 	)
 
-	// Initialize cluster manager
-	cm := cluster.NewClusterManager()
-
-	// Prepare log options
-	opts := &cluster.LogOptions{
-		PodName:       podName,
-		Namespace:     logsNamespace,
-		Container:     logsContainer,
-		Follow:        follow,
-		Tail:          int64(tail),
-		Since:         since,
-		Timestamps:    timestamps,
-		Previous:      previous,
-		AllContainers: allContainers,
+	// Initialize metadata store
+	metaStore, err := metadata.NewStore()
+	if err != nil {
+		logger.Error("Failed to initialize metadata store", "error", err)
+		return fmt.Errorf("failed to initialize metadata store: %w", err)
 	}
 
-	// Get logs
-	logStream, err := cm.GetLogs(clusterName, opts)
+	// Get cluster metadata
+	meta, err := metaStore.Get(clusterName)
+	if err != nil {
+		logger.Error("Cluster not found", "name", clusterName)
+		return fmt.Errorf("cluster %q not found in local registry", clusterName)
+	}
+
+	// Get kubeconfig
+	kubeMgr, err := kubeconfig.NewManager()
+	if err != nil {
+		logger.Error("Failed to create kubeconfig manager", "error", err)
+		return fmt.Errorf("failed to create kubeconfig manager: %w", err)
+	}
+
+	kubePath, err := kubeMgr.Get(clusterName, meta.Namespace)
+	if err != nil {
+		logger.Error("Failed to get kubeconfig", "error", err)
+		return fmt.Errorf("failed to get kubeconfig for cluster %q: %w", clusterName, err)
+	}
+
+	// Build kubectl logs command
+	args = []string{"logs", "-n", logsNamespace}
+	if podName != "" {
+		args = append(args, podName)
+	} else {
+		// If no pod specified, list pods instead
+		args = []string{"get", "pods", "-n", logsNamespace}
+	}
+
+	if follow && podName != "" {
+		args = append(args, "-f")
+	}
+
+	if tail != -1 {
+		args = append(args, "--tail="+fmt.Sprint(tail))
+	}
+
+	if since != "" {
+		args = append(args, "--since="+since)
+	}
+
+	// Set up environment with kubeconfig
+	env := os.Environ()
+	env = append(env, "KUBECONFIG="+kubePath)
+
+	// Execute kubectl with streaming output
+	exitCode, err := shell.ExecuteCommandStreamingWithEnv(env, "kubectl", args...)
 	if err != nil {
 		logger.Error("Failed to get logs", "error", err)
-		return fmt.Errorf("failed to get logs: %w", err)
+		return err
 	}
-	defer func() { _ = logStream.Close() }() // nolint:errcheck
 
-	// Stream logs to stdout
-	if _, err := io.Copy(os.Stdout, logStream); err != nil {
-		logger.Error("Failed to stream logs", "error", err)
-		return fmt.Errorf("failed to stream logs: %w", err)
+	if exitCode != 0 {
+		return fmt.Errorf("kubectl exited with code %d", exitCode)
 	}
 
 	return nil

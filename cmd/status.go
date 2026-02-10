@@ -3,44 +3,27 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/ghostcluster-ai/ghostctl/internal/cluster"
+	"github.com/ghostcluster-ai/ghostctl/internal/kubeconfig"
+	"github.com/ghostcluster-ai/ghostctl/internal/metadata"
+	"github.com/ghostcluster-ai/ghostctl/internal/shell"
 	"github.com/ghostcluster-ai/ghostctl/internal/telemetry"
+	"github.com/ghostcluster-ai/ghostctl/internal/vcluster"
 	"github.com/spf13/cobra"
 )
 
 var statusCmd = &cobra.Command{
 	Use:   "status <cluster-name>",
-	Short: "Display cluster status and resource usage",
-	Long: `Show detailed status information about a specific cluster including:
-  - Current status (running, creating, terminating, failed)
-  - Resource allocation and usage (CPU, memory, GPU)
-  - GPU utilization
-  - Pod status
-  - Time-to-live (TTL) remaining
-  - Estimated cost
+	Short: "Display vCluster status",
+	Long: `Show status information about a virtual Kubernetes cluster.
+
+This displays whether the vCluster is running and accessible, creation time,
+and time-to-live information.
 
 Examples:
-  ghostctl status my-cluster              # Show cluster status
-  ghostctl status my-cluster --watch      # Watch status updates in real-time
-  ghostctl status my-cluster --verbose    # Show detailed information`,
+  ghostctl status my-cluster        # Show cluster status
+  ghostctl status my-cluster -v     # Show detailed error information`,
 	Args: cobra.ExactArgs(1),
 	RunE: runStatusCmd,
-}
-
-var (
-	watch    bool
-	detailed bool
-)
-
-func init() {
-	statusCmd.Flags().BoolVar(
-		&watch, "watch", false,
-		"watch cluster status in real-time",
-	)
-	statusCmd.Flags().BoolVar(
-		&detailed, "detailed", false,
-		"show detailed status information",
-	)
 }
 
 func runStatusCmd(cmd *cobra.Command, args []string) error {
@@ -49,59 +32,77 @@ func runStatusCmd(cmd *cobra.Command, args []string) error {
 
 	logger.Info("Fetching cluster status", "name", clusterName)
 
-	// Initialize cluster manager
-	cm := cluster.NewClusterManager()
-
-	// Get cluster status
-	status, err := cm.GetClusterStatus(clusterName)
+	// Initialize metadata store
+	metaStore, err := metadata.NewStore()
 	if err != nil {
-		logger.Error("Failed to get cluster status", "error", err)
-		return fmt.Errorf("failed to get cluster status: %w", err)
+		logger.Error("Failed to initialize metadata store", "error", err)
+		return fmt.Errorf("failed to initialize metadata store: %w", err)
+	}
+
+	// Get cluster metadata
+	meta, err := metaStore.Get(clusterName)
+	if err != nil {
+		logger.Error("Cluster not found", "name", clusterName)
+		return fmt.Errorf("cluster %q not found in local registry", clusterName)
+	}
+
+	// Check if vCluster is accessible
+	status := "unknown"
+	isReachable := false
+
+	if err := vcluster.Status(clusterName, meta.Namespace); err == nil {
+		status = "running"
+		isReachable = true
+
+		// Verify kubeconfig works
+		kubeMgr, err := kubeconfig.NewManager()
+		if err == nil {
+			kubePath, err := kubeMgr.Get(clusterName, meta.Namespace)
+			if err == nil {
+				// Try to contact the API server
+				env := []string{"KUBECONFIG=" + kubePath}
+				env = append(env, "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+				result, _ := shell.ExecuteCommandWithEnv(env, "kubectl", "cluster-info")
+				if result.ExitCode != 0 {
+					status = "not_ready"
+					isReachable = false
+				}
+			}
+		}
+	} else {
+		status = "offline"
 	}
 
 	// Display status
-	displayStatus(status, detailed)
+	displayStatus(clusterName, meta, status, isReachable)
 
 	return nil
 }
 
-func displayStatus(status *cluster.ClusterStatus, detailed bool) {
-	fmt.Printf("Cluster: %s\n", status.Name)
-	fmt.Printf("Status: %s\n", status.Status)
-	fmt.Printf("Created: %s\n", status.CreatedAt.Format("2006-01-02 15:04:05"))
-	fmt.Printf("TTL Remaining: %s\n", status.TTLRemaining)
-	fmt.Printf("\nResources:\n")
-	fmt.Printf("  CPU Requested: %s | CPU Used: %s (%.1f%%)\n",
-		status.CPURequested,
-		status.CPUUsed,
-		status.CPUUsagePercent,
-	)
-	fmt.Printf("  Memory Requested: %s | Memory Used: %s (%.1f%%)\n",
-		status.MemoryRequested,
-		status.MemoryUsed,
-		status.MemoryUsagePercent,
-	)
+func displayStatus(name string, meta *metadata.ClusterMetadata, status string, isReachable bool) {
+	fmt.Printf("Cluster: %s\n", name)
+	fmt.Printf("Namespace: %s\n", meta.Namespace)
+	fmt.Printf("Status: %s\n", status)
+	fmt.Printf("Created: %s\n", meta.CreatedAt.Format("2006-01-02 15:04:05"))
 
-	if status.GPUCount > 0 {
-		fmt.Printf("  GPU Count: %d\n", status.GPUCount)
-		fmt.Printf("  GPU Type: %s\n", status.GPUType)
-		fmt.Printf("  GPU Utilization: %.1f%%\n", status.GPUUtilization)
+	// Display TTL information if set
+	if meta.TTL != "" {
+		fmt.Printf("TTL: %s\n", meta.TTL)
+		// Note: Computing actual TTL remaining would require parsing the TTL string
+		// For now, just display that it's set
 	}
 
-	fmt.Printf("\nPods: %d running, %d pending, %d failed\n",
-		status.RunningPods,
-		status.PendingPods,
-		status.FailedPods,
-	)
+	// Display kubeconfig path
+	kubePath, _ := metadata.GetClusterPath(name)
+	fmt.Printf("Kubeconfig: %s\n", kubePath)
 
-	fmt.Printf("\nEstimated Cost:\n")
-	fmt.Printf("  Hourly: $%.2f\n", status.HourlyCost)
-	fmt.Printf("  Total (projected): $%.2f\n", status.EstimatedTotalCost)
-
-	if detailed {
-		fmt.Printf("\nDetailed Information:\n")
-		fmt.Printf("  Version: %s\n", status.Version)
-		fmt.Printf("  Kubernetes Version: %s\n", status.KubernetesVersion)
-		fmt.Printf("  Nodes: %d\n", status.NodeCount)
+	// Display connectivity status
+	if isReachable {
+		fmt.Printf("\n✓ vCluster is accessible\n")
+	} else {
+		fmt.Printf("\n✗ vCluster is not accessible\n")
 	}
+
+	fmt.Printf("\nTo connect, run:\n")
+	fmt.Printf("  eval $(ghostctl connect %s)\n", name)
 }

@@ -3,105 +3,88 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/ghostcluster-ai/ghostctl/internal/cluster"
+	"github.com/ghostcluster-ai/ghostctl/internal/metadata"
+	"github.com/ghostcluster-ai/ghostctl/internal/shell"
 	"github.com/ghostcluster-ai/ghostctl/internal/telemetry"
 	"github.com/spf13/cobra"
 )
 
 var initCmd = &cobra.Command{
 	Use:   "init",
-	Short: "Initialize Ghostcluster controller in the host cluster",
-	Long: `Initialize the Ghostcluster controller in your Kubernetes host cluster.
+	Short: "Initialize ghostctl for vCluster management",
+	Long: `Initialize ghostctl for managing vClusters.
 
 This command:
-  - Validates connectivity to the host cluster
-  - Creates necessary namespaces
-  - Installs vCluster controller components
-  - Sets up RBAC for cluster management
+  - Validates connectivity to the Kubernetes host cluster
+  - Checks that vcluster CLI is installed
+  - Creates the ghostcluster namespace (if it doesn't exist)
+  - Sets up local metadata store
 
 Example:
-  ghostctl init --host-cluster my-cluster --namespace ghostcluster`,
+  ghostctl init`,
 	RunE: runInitCmd,
-}
-
-var (
-	hostCluster    string
-	namespace      string
-	gcpProject     string
-	awsRegion      string
-	skipValidation bool
-)
-
-func init() {
-	initCmd.Flags().StringVar(
-		&hostCluster, "host-cluster", "local",
-		"name of the host Kubernetes cluster",
-	)
-	initCmd.Flags().StringVar(
-		&namespace, "namespace", "ghostcluster",
-		"namespace to install Ghostcluster controller",
-	)
-	initCmd.Flags().StringVar(
-		&gcpProject, "gcp-project", "",
-		"GCP project ID for cluster provisioning",
-	)
-	initCmd.Flags().StringVar(
-		&awsRegion, "aws-region", "us-west-2",
-		"AWS region for cluster provisioning",
-	)
-	initCmd.Flags().BoolVar(
-		&skipValidation, "skip-validation", false,
-		"skip validation checks",
-	)
 }
 
 func runInitCmd(cmd *cobra.Command, args []string) error {
 	logger := telemetry.GetLogger()
-	logger.Info("Initializing Ghostcluster controller",
-		"hostCluster", hostCluster,
-		"namespace", namespace,
-	)
+	namespace := "ghostcluster"
 
-	// Initialize cluster manager
-	cm := cluster.NewClusterManager()
+	logger.Info("Initializing ghostctl")
 
-	// Validate kubeconfig
-	if !skipValidation {
-		logger.Debug("Validating Kubernetes connection")
-		if err := cm.ValidateConnection(); err != nil {
-			logger.Error("Failed to connect to host cluster", "error", err)
-			return fmt.Errorf("validation failed: %w", err)
+	// Check if vcluster CLI is available
+	logger.Info("Checking for vcluster CLI")
+	if !shell.CommandExists("vcluster") {
+		logger.Error("vcluster CLI not found")
+		return fmt.Errorf("vcluster CLI not found in PATH. Please install vCluster first:\n" +
+			"  https://www.vcluster.com/docs/getting-started/setup")
+	}
+	fmt.Println("✓ vcluster CLI found")
+
+	// Check kubectl connectivity
+	logger.Info("Checking Kubernetes connectivity")
+	result, err := shell.ExecuteCommand("kubectl", "cluster-info")
+	if err != nil || result.ExitCode != 0 {
+		logger.Error("Failed to connect to Kubernetes cluster")
+		return fmt.Errorf("failed to connect to Kubernetes cluster. Make sure kubeconfig is set correctly")
+	}
+	fmt.Println("✓ Connected to Kubernetes cluster")
+
+	// Create namespace if it doesn't exist
+	logger.Info("Ensuring namespace exists", "namespace", namespace)
+	result, _ = shell.ExecuteCommand("kubectl", "get", "namespace", namespace)
+	if result.ExitCode != 0 {
+		// Namespace doesn't exist, create it
+		logger.Info("Creating namespace", "namespace", namespace)
+		result, err = shell.ExecuteCommand("kubectl", "create", "namespace", namespace)
+		if err != nil || result.ExitCode != 0 {
+			logger.Error("Failed to create namespace")
+			return fmt.Errorf("failed to create namespace %q", namespace)
 		}
+		fmt.Printf("✓ Created namespace: %s\n", namespace)
+	} else {
+		fmt.Printf("✓ Namespace already exists: %s\n", namespace)
 	}
 
-	// Create namespace
-	logger.Info("Creating namespace", "namespace", namespace)
-	if err := cm.CreateNamespace(namespace); err != nil {
-		logger.Error("Failed to create namespace", "error", err)
-		return fmt.Errorf("failed to create namespace: %w", err)
+	// Initialize metadata store
+	logger.Info("Initializing metadata store")
+	metaStore, err := metadata.NewStore()
+	if err != nil {
+		logger.Error("Failed to initialize metadata store", "error", err)
+		return fmt.Errorf("failed to initialize metadata store: %w", err)
 	}
+	fmt.Println("✓ Metadata store initialized")
 
-	// Install vCluster controller
-	logger.Info("Installing vCluster controller components")
-	if err := cm.InstallController(namespace); err != nil {
-		logger.Error("Failed to install controller", "error", err)
-		return fmt.Errorf("failed to install controller: %w", err)
-	}
-
-	// Configure cloud provider if specified
-	if gcpProject != "" {
-		logger.Info("Configuring GCP project", "project", gcpProject)
-		if err := cm.ConfigureGCP(namespace, gcpProject); err != nil {
-			logger.Error("Failed to configure GCP", "error", err)
-			return fmt.Errorf("failed to configure GCP: %w", err)
-		}
-	}
-
-	logger.Info("✓ Ghostcluster controller initialized successfully")
+	// List the directories
+	clusters, _ := metaStore.List()
+	fmt.Printf("\n✓ ghostctl initialized successfully\n")
+	fmt.Printf("  Config directory: ~/.ghost\n")
+	fmt.Printf("  Kubeconfigs: ~/.ghost/kubeconfigs\n")
+	fmt.Printf("  Metadata: ~/.ghost/clusters.json\n\n")
+	fmt.Printf("Current clusters: %d\n", len(clusters))
 	fmt.Println("\nNext steps:")
-	fmt.Println("  1. Verify installation: ghostctl status")
-	fmt.Println("  2. Create your first cluster: ghostctl up --template default")
-	fmt.Println("  3. View active clusters: ghostctl list")
+	fmt.Println("  1. Create your first cluster: ghostctl up my-cluster")
+	fmt.Println("  2. List active clusters: ghostctl list")
+	fmt.Println("  3. Check cluster status: ghostctl status my-cluster")
 
 	return nil
 }

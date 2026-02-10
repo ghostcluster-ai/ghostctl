@@ -4,151 +4,118 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ghostcluster-ai/ghostctl/internal/cluster"
+	"github.com/ghostcluster-ai/ghostctl/internal/kubeconfig"
+	"github.com/ghostcluster-ai/ghostctl/internal/metadata"
 	"github.com/ghostcluster-ai/ghostctl/internal/telemetry"
+	"github.com/ghostcluster-ai/ghostctl/internal/vcluster"
 	"github.com/spf13/cobra"
 )
 
 var upCmd = &cobra.Command{
 	Use:   "up [cluster-name]",
 	Short: "Create a new ephemeral vCluster",
-	Long: `Create a new virtual Kubernetes cluster for your experiment, PR, or notebook.
+	Long: `Create a new virtual Kubernetes cluster in the host Kubernetes cluster.
 
-The cluster will be provisioned with specified resources and will automatically
-be destroyed after the TTL (time-to-live) expires.
+The vCluster will be created in the ghostcluster namespace and can be accessed
+using the generated kubeconfig.
 
 Examples:
-  ghostctl up                              # Create default cluster with default template
-  ghostctl up my-lab --template gpt4       # Create named cluster with specific template
-  ghostctl up ml-exp --gpu 1 --ttl 4h      # Create cluster with GPU, 4 hour TTL
-  ghostctl up pr-123 --from-pr 123 --gpu 2 # Create from PR context with 2 GPUs`,
+  ghostctl up my-cluster              # Create cluster with auto-generated name
+  ghostctl up my-cluster --ttl 2h     # Create with 2 hour TTL`,
 	RunE: runUpCmd,
 }
 
 var (
-	clusterTemplate string
-	gpuCount        int
-	gpuType         string
-	ttl             string
-	memory          string
-	cpu             string
-	fromPR          string
-	wait            bool
-	waitTimeout     string
-	dryRun          bool
+	ttl string
 )
 
 func init() {
 	upCmd.Flags().StringVar(
-		&clusterTemplate, "template", "default",
-		"cluster template to use (default: default)",
-	)
-	upCmd.Flags().IntVar(
-		&gpuCount, "gpu", 0,
-		"number of GPUs to allocate",
-	)
-	upCmd.Flags().StringVar(
-		&gpuType, "gpu-type", "nvidia-t4",
-		"type of GPU (e.g., nvidia-t4, nvidia-a100)",
-	)
-	upCmd.Flags().StringVar(
-		&ttl, "ttl", "1h",
-		"time-to-live for the cluster (default: 1h, examples: 30m, 2h, 1d)",
-	)
-	upCmd.Flags().StringVar(
-		&memory, "memory", "4Gi",
-		"memory allocation for the cluster",
-	)
-	upCmd.Flags().StringVar(
-		&cpu, "cpu", "2",
-		"CPU allocation for the cluster",
-	)
-	upCmd.Flags().StringVar(
-		&fromPR, "from-pr", "",
-		"create cluster from PR context (PR number)",
-	)
-	upCmd.Flags().BoolVar(
-		&wait, "wait", true,
-		"wait for cluster to be ready",
-	)
-	upCmd.Flags().StringVar(
-		&waitTimeout, "wait-timeout", "5m",
-		"timeout for waiting for cluster readiness",
-	)
-	upCmd.Flags().BoolVar(
-		&dryRun, "dry-run", false,
-		"simulate cluster creation without actually creating it",
+		&ttl, "ttl", "",
+		"time-to-live for the cluster (optional, examples: 30m, 2h, 1d)",
 	)
 }
 
 func runUpCmd(cmd *cobra.Command, args []string) error {
 	logger := telemetry.GetLogger()
 
-	// Get cluster name or generate one
-	clusterName := "ghostctl"
-	if len(args) > 0 {
-		clusterName = args[0]
+	// Get cluster name from args
+	if len(args) == 0 {
+		return fmt.Errorf("cluster name is required")
 	}
+	clusterName := args[0]
 
-	logger.Info("Creating new cluster",
+	logger.Info("Creating new vCluster",
 		"name", clusterName,
-		"template", clusterTemplate,
-		"gpu", gpuCount,
 		"ttl", ttl,
 	)
 
-	if dryRun {
-		fmt.Println("DRY RUN: Would create cluster with the following configuration:")
-		fmt.Printf("  Name: %s\n", clusterName)
-		fmt.Printf("  Template: %s\n", clusterTemplate)
-		fmt.Printf("  GPU Count: %d\n", gpuCount)
-		fmt.Printf("  GPU Type: %s\n", gpuType)
-		fmt.Printf("  TTL: %s\n", ttl)
-		fmt.Printf("  Memory: %s\n", memory)
-		fmt.Printf("  CPU: %s\n", cpu)
-		return nil
+	// Initialize metadata store
+	metaStore, err := metadata.NewStore()
+	if err != nil {
+		logger.Error("Failed to initialize metadata store", "error", err)
+		return fmt.Errorf("failed to initialize metadata store: %w", err)
 	}
 
-	// Initialize cluster manager
-	cm := cluster.NewClusterManager()
-
-	// Prepare cluster config
-	config := &cluster.Config{
-		Name:      clusterName,
-		Template:  clusterTemplate,
-		GPU:       gpuCount,
-		GPUType:   gpuType,
-		TTL:       ttl,
-		Memory:    memory,
-		CPU:       cpu,
-		FromPR:    fromPR,
-		Namespace: "ghostcluster",
+	// Check if cluster already exists
+	if metaStore.Exists(clusterName) {
+		return fmt.Errorf("cluster %q already exists", clusterName)
 	}
 
-	// Create cluster
-	logger.Info("Provisioning cluster")
-	if err := cm.CreateCluster(config); err != nil {
-		logger.Error("Failed to create cluster", "error", err)
-		return fmt.Errorf("failed to create cluster: %w", err)
+	namespace := vcluster.DefaultNamespace
+
+	// Create the vCluster
+	logger.Info("Creating vCluster in Kubernetes")
+	if err := vcluster.Create(clusterName, namespace); err != nil {
+		logger.Error("Failed to create vCluster", "error", err)
+		return err
 	}
 
-	// Wait for cluster to be ready if requested
-	if wait {
-		logger.Info("Waiting for cluster to be ready", "timeout", waitTimeout)
-		timeout, _ := time.ParseDuration(waitTimeout)
-		if err := cm.WaitForCluster(clusterName, timeout); err != nil {
-			logger.Error("Cluster failed to become ready", "error", err)
-			return fmt.Errorf("cluster not ready: %w", err)
-		}
+	// Wait for vCluster to be ready
+	logger.Info("Waiting for vCluster to be ready")
+	waitTimeout := 5 * time.Minute
+	if err := vcluster.IsReady(clusterName, namespace, waitTimeout); err != nil {
+		logger.Error("vCluster failed to become ready", "error", err)
+		return err
 	}
 
-	logger.Info("✓ Cluster created successfully", "name", clusterName)
-	fmt.Printf("\nCluster '%s' is ready!\n", clusterName)
+	// Retrieve and store kubeconfig
+	logger.Info("Retrieving kubeconfig")
+	kubeconfigPath, err := kubeconfig.NewManager()
+	if err != nil {
+		logger.Error("Failed to create kubeconfig manager", "error", err)
+		return err
+	}
+
+	_, err = kubeconfigPath.Fresh(clusterName, namespace)
+	if err != nil {
+		logger.Error("Failed to retrieve kubeconfig", "error", err)
+		return err
+	}
+
+	// Store metadata
+	kubePath, _ := metadata.GetClusterPath(clusterName)
+	meta := &metadata.ClusterMetadata{
+		Name:           clusterName,
+		Namespace:      namespace,
+		CreatedAt:      time.Now(),
+		TTL:            ttl,
+		KubeconfigPath: kubePath,
+		HostCluster:    "current",
+	}
+
+	if err := metaStore.Add(meta); err != nil {
+		logger.Error("Failed to store cluster metadata", "error", err)
+		return fmt.Errorf("failed to store cluster metadata: %w", err)
+	}
+
+	logger.Info("✓ vCluster created successfully", "name", clusterName)
+	fmt.Printf("\n✓ Cluster '%s' is ready!\n", clusterName)
 	fmt.Println("\nUseful commands:")
-	fmt.Printf("  ghostctl status %s                    # Check cluster status\n", clusterName)
-	fmt.Printf("  ghostctl exec %s 'kubectl get pods'   # Run command in cluster\n", clusterName)
-	fmt.Printf("  ghostctl logs %s -f                   # Stream cluster logs\n", clusterName)
-	fmt.Printf("  ghostctl down %s                      # Destroy cluster\n", clusterName)
+	fmt.Printf("  ghostctl status %s               # Check cluster status\n", clusterName)
+	fmt.Printf("  ghostctl connect %s              # Show connection command\n", clusterName)
+	fmt.Printf("  ghostctl exec %s -- kubectl ... # Run command in cluster\n", clusterName)
+	fmt.Printf("  ghostctl down %s                 # Destroy cluster\n", clusterName)
 
 	return nil
 }
