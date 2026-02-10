@@ -130,10 +130,7 @@ func IsReady(name, namespace string, timeout time.Duration) error {
 			return nil
 		}
 
-		select {
-		case <-ticker.C:
-			// Continue polling
-		}
+		<-ticker.C
 	}
 }
 

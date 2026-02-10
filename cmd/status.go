@@ -47,7 +47,7 @@ func runStatusCmd(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check if vCluster is accessible
-	status := "unknown"
+	var status string
 	isReachable := false
 
 	if err := vcluster.Status(clusterName, meta.Namespace); err == nil {

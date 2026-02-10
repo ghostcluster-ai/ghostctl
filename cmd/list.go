@@ -85,8 +85,8 @@ func displayClustersTable(clusters []*metadata.ClusterMetadata) {
 
 	// Rows
 	for _, c := range clusters {
-		status := "unknown"
 		// Check if cluster is actually running
+		var status string
 		if err := vcluster.Status(c.Name, c.Namespace); err == nil {
 			status = "running"
 		} else {
