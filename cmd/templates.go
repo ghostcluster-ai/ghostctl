@@ -89,9 +89,8 @@ func runTemplatesCmd(cmd *cobra.Command, args []string) error {
 
 func displayTemplatesList(templates []*cluster.Template, filter string) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	defer w.Flush()
-
-	fmt.Fprintln(w, "NAME\tDESCRIPTION\tCPU\tMEMORY\tGPU\tCOST/HOUR")
+	defer func() { _ = w.Flush() }() // nolint:errcheck
+	_, _ = fmt.Fprintln(w, "NAME\tDESCRIPTION\tCPU\tMEMORY\tGPU\tCOST/HOUR") // nolint:errcheck
 
 	for _, t := range templates {
 		// Apply filter if specified
@@ -104,7 +103,7 @@ func displayTemplatesList(templates []*cluster.Template, filter string) {
 			gpu = fmt.Sprintf("%d (%s)", t.GPUCount, t.GPUType)
 		}
 
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t$%.2f\n",
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t$%.2f\n", // nolint:errcheck
 			t.Name,
 			t.Description,
 			t.CPU,
@@ -134,7 +133,7 @@ func displayTemplateDetails(template *cluster.Template, extended bool) {
 		fmt.Printf("  Storage Size: %s\n", template.StorageSize)
 		fmt.Printf("  Network Type: %s\n", template.NetworkType)
 		fmt.Printf("  Auto-Scaling: %v\n", template.AutoScaling)
-		if template.PreInstalledApps != nil && len(template.PreInstalledApps) > 0 {
+		if len(template.PreInstalledApps) > 0 { // nolint:S1009
 			fmt.Printf("  Pre-installed Apps: %v\n", template.PreInstalledApps)
 		}
 	}

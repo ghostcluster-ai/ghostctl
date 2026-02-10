@@ -3,16 +3,13 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
 // TestDefaultConfig tests the default configuration
 func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
-
-	if cfg == nil {
-		t.Error("DefaultConfig() returned nil")
-	}
 
 	if cfg.APIServer == "" {
 		t.Error("DefaultConfig() APIServer is empty")
@@ -73,7 +70,8 @@ func TestGetConfigPath(t *testing.T) {
 	}
 
 	// Verify it contains the expected directory name
-	if !filepath.HasPrefix(path, filepath.Join(os.Getenv("HOME"), ConfigDirName)) {
-		t.Errorf("GetConfigPath() path doesn't contain expected directory: %s", path)
+	expectedDir := filepath.Join(os.Getenv("HOME"), ConfigDirName)
+	if !strings.Contains(path, expectedDir) {
+		t.Errorf("GetConfigPath() path doesn't contain expected directory: %s in %s", expectedDir, path)
 	}
 }

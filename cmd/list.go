@@ -97,14 +97,14 @@ func runListCmd(cmd *cobra.Command, args []string) error {
 
 func displayClustersTable(clusters []*cluster.ClusterInfo) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	defer w.Flush()
+	defer func() { _ = w.Flush() }() // nolint:errcheck
 
 	// Header
-	fmt.Fprintln(w, "NAME\tNAMESPACE\tSTATUS\tGPU\tMEMORY\tTTL\tCREATED\tESTIMATED COST")
+	_, _ = fmt.Fprintln(w, "NAME\tNAMESPACE\tSTATUS\tGPU\tMEMORY\tTTL\tCREATED\tESTIMATED COST") // nolint:errcheck
 
 	// Rows
 	for _, c := range clusters {
-		fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\t%s\t%s\t$%0.2f\n",
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\t%s\t%s\t$%0.2f\n", // nolint:errcheck
 			c.Name,
 			c.Namespace,
 			c.Status,
@@ -119,7 +119,7 @@ func displayClustersTable(clusters []*cluster.ClusterInfo) {
 
 func displayClustersJSON(clusters []*cluster.ClusterInfo) error {
 	// JSON formatting would be implemented here
-	fmt.Fprintln(os.Stdout, "JSON output format not yet implemented")
+	_, _ = fmt.Fprintln(os.Stdout, "JSON output format not yet implemented") // nolint:errcheck
 	return nil
 }
 

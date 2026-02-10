@@ -119,7 +119,7 @@ func runLogsCmd(cmd *cobra.Command, args []string) error {
 		logger.Error("Failed to get logs", "error", err)
 		return fmt.Errorf("failed to get logs: %w", err)
 	}
-	defer logStream.Close()
+	defer func() { _ = logStream.Close() }() // nolint:errcheck
 
 	// Stream logs to stdout
 	if _, err := io.Copy(os.Stdout, logStream); err != nil {

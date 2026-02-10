@@ -6,10 +6,6 @@ import "testing"
 func TestNewClusterManager(t *testing.T) {
 	cm := NewClusterManager()
 
-	if cm == nil {
-		t.Error("NewClusterManager() returned nil")
-	}
-
 	if cm.config == nil {
 		t.Error("NewClusterManager() config is nil")
 	}

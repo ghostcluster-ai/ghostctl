@@ -80,7 +80,7 @@ test-coverage: test ## Run tests with coverage report
 
 lint: ## Run linters
 	@echo "Running linters..."
-	@which golangci-lint > /dev/null || (echo "Installing golangci-lint..." && go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)
+	@which golangci-lint > /dev/null || (echo "Installing golangci-lint..." && go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.57.2)
 	@golangci-lint run ./...
 	@echo "Linting completed"
 

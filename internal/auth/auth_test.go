@@ -12,10 +12,6 @@ func TestNewTokenManager(t *testing.T) {
 		t.Fatalf("NewTokenManager() err = %v", err)
 	}
 
-	if tm == nil {
-		t.Error("NewTokenManager() returned nil")
-	}
-
 	if tm.config == nil {
 		t.Error("NewTokenManager() config is nil")
 	}

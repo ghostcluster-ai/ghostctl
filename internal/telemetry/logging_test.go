@@ -8,10 +8,6 @@ import (
 func TestInitLogger(t *testing.T) {
 	logger := InitLogger()
 
-	if logger == nil {
-		t.Error("InitLogger() returned nil")
-	}
-
 	if logger.stdout == nil {
 		t.Error("InitLogger() stdout is nil")
 	}

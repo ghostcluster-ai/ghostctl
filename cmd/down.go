@@ -57,7 +57,7 @@ func runDownCmd(cmd *cobra.Command, args []string) error {
 	if !force {
 		fmt.Printf("Are you sure you want to destroy cluster '%s'? (y/n): ", clusterName)
 		var response string
-		fmt.Scanln(&response)
+		_, _ = fmt.Scanln(&response) // nolint:errcheck
 		if response != "y" && response != "yes" {
 			logger.Info("Cluster destruction cancelled")
 			fmt.Println("Cancelled")
