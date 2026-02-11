@@ -31,7 +31,7 @@ Examples:
   ghostctl connect my-cluster             # Switch to the cluster
   kubectl get pods                        # Use kubectl directly
   ghostctl disconnect                     # Return to parent cluster
-  ghostctl down my-cluster                # Destroy a cluster`,,
+  ghostctl down my-cluster                # Destroy a cluster`,
 	Version: fmt.Sprintf("%s (commit: %s, built: %s)", Version, Commit, BuildTime),
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		if verbose {
