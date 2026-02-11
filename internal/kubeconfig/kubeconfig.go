@@ -98,10 +98,8 @@ func (km *Manager) MergeIntoDefault(clusterName, namespace string) (string, erro
 		return "", fmt.Errorf("failed to write merged kubeconfig: %w", err)
 	}
 
-	// Rename the context to a predictable name
-	if err := renameContext(tmpFile, contextName); err != nil {
-		// Non-fatal, original context name will be used
-	}
+	// Rename the context to a predictable name (non-fatal if it fails)
+	_ = renameContext(tmpFile, contextName)
 
 	return contextName, nil
 }

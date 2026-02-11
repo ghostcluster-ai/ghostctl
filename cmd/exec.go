@@ -12,8 +12,9 @@ import (
 )
 
 var execCmd = &cobra.Command{
-	Use:   "exec <cluster-name> -- <command> [args...]",
-	Short: "Execute commands in a vCluster",
+	Use:                "exec <cluster-name> -- <command> [args...]",
+	Short:              "Execute commands in a vCluster",
+	DisableFlagParsing: true,
 	Long: `Execute commands (e.g. kubectl) against a vCluster.
 
 This command runs a command with the vCluster's kubeconfig set as KUBECONFIG,
@@ -39,12 +40,25 @@ func runExecCmd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("missing cluster name\n\nUsage: ghostctl exec <cluster-name> -- <command> [args...]\n\nExample:\n  ghostctl exec test -- kubectl get pods\n\nNote: You can also use 'ghostctl connect test' to switch contexts globally.")
 	}
 
-	if len(args) < 2 || args[1] != "--" {
+	// Find the "--" separator
+	dashIndex := -1
+	for i, arg := range args {
+		if arg == "--" {
+			dashIndex = i
+			break
+		}
+	}
+
+	if dashIndex == -1 {
 		return fmt.Errorf("missing '--' separator\n\nUsage: ghostctl exec <cluster-name> -- <command> [args...]\n\nExample:\n  ghostctl exec test -- kubectl get pods\n\nNote: You can also use 'ghostctl connect test' to switch contexts globally.")
 	}
 
+	if dashIndex == 0 {
+		return fmt.Errorf("missing cluster name\n\nUsage: ghostctl exec <cluster-name> -- <command> [args...]\n\nExample:\n  ghostctl exec test -- kubectl get pods")
+	}
+
 	clusterName := args[0]
-	commandArgs := args[2:]
+	commandArgs := args[dashIndex+1:]
 
 	if len(commandArgs) == 0 {
 		return fmt.Errorf("no command specified after --")
