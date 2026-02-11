@@ -7,7 +7,6 @@ import (
 
 	"github.com/ghostcluster-ai/ghostctl/internal/kubeconfig"
 	"github.com/ghostcluster-ai/ghostctl/internal/metadata"
-	"github.com/ghostcluster-ai/ghostctl/internal/telemetry"
 	"github.com/spf13/cobra"
 )
 
@@ -51,41 +50,39 @@ func init() {
 }
 
 func runConnectCmd(cmd *cobra.Command, args []string) error {
-	logger := telemetry.GetLogger()
 	clusterName := args[0]
 
 	// Initialize metadata store
 	metaStore, err := metadata.NewStore()
 	if err != nil {
-		logger.Error("Failed to initialize metadata store", "error", err)
 		return fmt.Errorf("failed to initialize metadata store: %w", err)
 	}
 
 	// Get cluster metadata
 	meta, err := metaStore.Get(clusterName)
 	if err != nil {
-		logger.Error("Cluster not found", "name", clusterName)
 		return fmt.Errorf("cluster %q not found in local registry", clusterName)
 	}
-
-	logger.Info("Getting kubeconfig for cluster", "name", clusterName)
 
 	// Ensure kubeconfig exists (regenerate if necessary)
 	kubeMgr, err := kubeconfig.NewManager()
 	if err != nil {
-		logger.Error("Failed to create kubeconfig manager", "error", err)
 		return fmt.Errorf("failed to create kubeconfig manager: %w", err)
 	}
 
 	kubePath, err := kubeMgr.Get(clusterName, meta.Namespace)
 	if err != nil {
-		logger.Error("Failed to get kubeconfig", "error", err)
 		return fmt.Errorf("failed to get kubeconfig for cluster %q: %w", clusterName, err)
 	}
 
+	// Save current KUBECONFIG as root (parent) on first connection
+	saveRootKubeconfig()
+
 	// If --set flag is used, update shell config files
 	if connectSet {
-		return setGlobalKubeconfig(clusterName, kubePath, logger)
+		if err := setGlobalKubeconfig(clusterName, kubePath, nil); err != nil {
+			return err
+		}
 	}
 
 	// Print based on flag
@@ -168,9 +165,45 @@ func setGlobalKubeconfig(clusterName, kubePath string, logger interface{ Info(ms
 	for _, f := range updatedFiles {
 		fmt.Printf("  - %s\n", f)
 	}
-	fmt.Printf("\nRestart your terminal or run: source ~/.bashrc  (or appropriate shell config)\n")
+
+	// Detect current shell and suggest appropriate source command
+	shellSourceCmd := getShellSourceCommand(updatedFiles)
+	if shellSourceCmd != "" {
+		fmt.Printf("\n# Apply now in current shell:\n")
+		fmt.Printf("%s\n", shellSourceCmd)
+	} else {
+		fmt.Printf("\nRestart your terminal or run: source ~/.bashrc  (or appropriate shell config)\n")
+	}
 
 	return nil
+}
+
+// getShellSourceCommand returns the appropriate source command for the current shell
+func getShellSourceCommand(updatedFiles []string) string {
+	shell := os.Getenv("SHELL")
+	
+	// Map shells to their config files and source command format
+	shellMap := map[string]string{
+		"bash":   "source ~/.bashrc",
+		"zsh":    "source ~/.zshrc",
+		"ksh":    "source ~/.kshrc",
+		"tcsh":   "source ~/.tcshrc",
+		"fish":   "source ~/.config/fish/config.fish",
+	}
+
+	// Extract shell name from path (e.g., /bin/zsh -> zsh)
+	shellName := filepath.Base(shell)
+	
+	if cmd, ok := shellMap[shellName]; ok {
+		return cmd
+	}
+
+	// Fallback to first updated file
+	if len(updatedFiles) > 0 {
+		return fmt.Sprintf("source %s", updatedFiles[0])
+	}
+
+	return ""
 }
 
 func contains(s, substr string) bool {
@@ -179,4 +212,36 @@ func contains(s, substr string) bool {
 
 func endsWithNewline(s string) bool {
 	return len(s) > 0 && s[len(s)-1] == '\n'
+}
+
+// saveRootKubeconfig saves the current KUBECONFIG as the root (parent) on first connection
+// Subsequent connects don't overwrite it, allowing disconnect to always return to root
+func saveRootKubeconfig() error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+
+	ghostDir := filepath.Join(homeDir, ".ghost")
+	rootKubeconfigPath := filepath.Join(ghostDir, ".root_kubeconfig")
+
+	// Check if root is already saved
+	if _, err := os.Stat(rootKubeconfigPath); err == nil {
+		// Root already saved, don't overwrite
+		return nil
+	}
+
+	// Get current KUBECONFIG (this is the parent/root)
+	currentKubeconfig := os.Getenv("KUBECONFIG")
+	if currentKubeconfig == "" {
+		currentKubeconfig = "unset"
+	}
+
+	// Write to file
+	if err := os.WriteFile(rootKubeconfigPath, []byte(currentKubeconfig), 0600); err != nil {
+		// Silently fail - this is not critical
+		return nil
+	}
+
+	return nil
 }

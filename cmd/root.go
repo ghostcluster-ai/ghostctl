@@ -60,8 +60,10 @@ func init() {
 		statusCmd,
 		logsCmd,
 		connectCmd,
+		disconnectCmd,
 		execCmd,
 		templatesCmd,
+		shellInitCmd,
 	)
 }
 
