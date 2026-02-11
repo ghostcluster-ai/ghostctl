@@ -130,8 +130,16 @@ func IsReady(name, namespace string, timeout time.Duration) error {
 			return fmt.Errorf("timeout waiting for vCluster %s to be ready", name)
 		}
 
-		err := Status(name, namespace)
-		if err == nil {
+		// Check if the vCluster pod is running using kubectl
+		args := []string{
+			"get", "pod",
+			"-n", namespace,
+			"-l", fmt.Sprintf("app.kubernetes.io/name=vcluster,app.kubernetes.io/instance=%s", name),
+			"-o", "jsonpath={.items[0].status.conditions[?(@.type==\"Ready\")].status}",
+		}
+
+		result, err := shell.ExecuteCommand("kubectl", args...)
+		if err == nil && strings.TrimSpace(result.Stdout) == "True" {
 			return nil
 		}
 
