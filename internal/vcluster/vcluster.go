@@ -83,7 +83,12 @@ func Status(name, namespace string) error {
 	}
 
 	if result.ExitCode != 0 {
-		return fmt.Errorf("vCluster not ready or not found (exit code %d)", result.ExitCode)
+		// Include command output to help diagnose why status reports non-zero
+		out := strings.TrimSpace(result.Stdout)
+		if out == "" {
+			out = "(no output)"
+		}
+		return fmt.Errorf("vCluster not ready or not found (exit code %d): %s", result.ExitCode, out)
 	}
 
 	return nil
