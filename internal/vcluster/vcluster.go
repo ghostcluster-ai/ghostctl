@@ -116,7 +116,30 @@ func GetKubeconfig(name, namespace string) (string, error) {
 		return "", fmt.Errorf("failed to get kubeconfig (exit code %d): %s", result.ExitCode, result.Stdout)
 	}
 
-	return result.Stdout, nil
+	// Extract valid YAML from output
+	// vcluster connect --print may include extra text, so we find the start of YAML
+	output := result.Stdout
+	lines := strings.Split(output, "\n")
+	
+	var yamlLines []string
+	var inYAML bool
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		// YAML should start with "apiVersion:" or other valid YAML markers
+		if !inYAML && strings.HasPrefix(trimmed, "apiVersion:") {
+			inYAML = true
+		}
+		
+		if inYAML {
+			yamlLines = append(yamlLines, line)
+		}
+	}
+	
+	if len(yamlLines) == 0 {
+		return "", fmt.Errorf("no valid kubeconfig YAML found in vcluster output")
+	}
+
+	return strings.Join(yamlLines, "\n"), nil
 }
 
 // IsReady waits for a vCluster to be ready with polling
