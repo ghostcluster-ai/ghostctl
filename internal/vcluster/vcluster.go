@@ -131,16 +131,21 @@ func IsReady(name, namespace string, timeout time.Duration) error {
 		}
 
 		// Check if the vCluster pod is running using kubectl
+		// Get pod status using a simple approach
 		args := []string{
 			"get", "pod",
 			"-n", namespace,
-			"-l", fmt.Sprintf("app.kubernetes.io/name=vcluster,app.kubernetes.io/instance=%s", name),
-			"-o", "jsonpath={.items[0].status.conditions[?(@.type==\"Ready\")].status}",
+			"-l", fmt.Sprintf("app=vcluster,release=%s", name),
+			"-o", "jsonpath={.items[0].status}",
 		}
 
 		result, err := shell.ExecuteCommand("kubectl", args...)
-		if err == nil && strings.TrimSpace(result.Stdout) == "True" {
-			return nil
+		if err == nil && result.ExitCode == 0 {
+			status := strings.TrimSpace(result.Stdout)
+			// Check if pod is running and all containers are ready
+			if strings.Contains(status, "\"phase\":\"Running\"") && strings.Contains(status, "\"ready\":true") {
+				return nil
+			}
 		}
 
 		<-ticker.C
