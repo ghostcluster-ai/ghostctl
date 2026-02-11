@@ -9,6 +9,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	connectPathOnly bool
+)
+
 var connectCmd = &cobra.Command{
 	Use:   "connect <cluster-name>",
 	Short: "Show connection command for a vCluster",
@@ -17,11 +21,20 @@ var connectCmd = &cobra.Command{
 This command prints an export statement that you can run in your shell
 to set KUBECONFIG to point to the virtual cluster.
 
-Examples:
-  ghostctl connect my-cluster              # Show connection command
-  eval $(ghostctl connect my-cluster)      # Connect in current shell`,
+To automatically set KUBECONFIG in your current shell, use:
+  eval $(ghostctl connect my-cluster)
+
+Or to get just the kubeconfig path:
+  ghostctl connect my-cluster --path-only`,
 	Args: cobra.ExactArgs(1),
 	RunE: runConnectCmd,
+}
+
+func init() {
+	connectCmd.Flags().BoolVar(
+		&connectPathOnly, "path-only", false,
+		"print only the kubeconfig path instead of the export statement",
+	)
 }
 
 func runConnectCmd(cmd *cobra.Command, args []string) error {
@@ -57,8 +70,12 @@ func runConnectCmd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get kubeconfig for cluster %q: %w", clusterName, err)
 	}
 
-	// Print the export command
-	fmt.Printf("export KUBECONFIG=%s\n", kubePath)
+	// Print based on flag
+	if connectPathOnly {
+		fmt.Println(kubePath)
+	} else {
+		fmt.Printf("export KUBECONFIG=%s\n", kubePath)
+	}
 
 	return nil
 }
