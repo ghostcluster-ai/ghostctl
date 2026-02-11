@@ -104,5 +104,5 @@ func displayStatus(name string, meta *metadata.ClusterMetadata, status string, i
 	}
 
 	fmt.Printf("\nTo connect, run:\n")
-	fmt.Printf("  eval $(ghostctl connect %s)\n", name)
+	fmt.Printf("  ghostctl connect %s\n", name)
 }

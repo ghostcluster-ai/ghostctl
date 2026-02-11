@@ -17,26 +17,33 @@ var execCmd = &cobra.Command{
 	Long: `Execute commands (e.g. kubectl) against a vCluster.
 
 This command runs a command with the vCluster's kubeconfig set as KUBECONFIG,
-allowing you to interact with the virtual cluster as if you had it configured
-in your local kubectl.
+allowing you to interact with the virtual cluster without switching contexts.
+
+Note: With the new connect/disconnect workflow, you can also:
+  ghostctl connect <cluster-name>
+  kubectl <command>  # Works directly
+  ghostctl disconnect
 
 Examples:
   ghostctl exec my-cluster -- kubectl get pods
   ghostctl exec my-cluster -- kubectl apply -f deployment.yaml
-  ghostctl exec my-cluster -- helm list
-  ghostctl exec my-cluster -- bash -c "kubectl port-forward svc/app 8080:80"`,
+  ghostctl exec my-cluster -- helm list`,
 	RunE: runExecCmd,
 }
 
 func runExecCmd(cmd *cobra.Command, args []string) error {
 	logger := telemetry.GetLogger()
 
-	if len(args) < 2 {
-		return fmt.Errorf("usage: exec <cluster-name> -- <command> [args...]")
+	// Better error messages for common mistakes
+	if len(args) == 0 {
+		return fmt.Errorf("missing cluster name\n\nUsage: ghostctl exec <cluster-name> -- <command> [args...]\n\nExample:\n  ghostctl exec test -- kubectl get pods\n\nNote: You can also use 'ghostctl connect test' to switch contexts globally.")
+	}
+
+	if len(args) < 2 || args[1] != "--" {
+		return fmt.Errorf("missing '--' separator\n\nUsage: ghostctl exec <cluster-name> -- <command> [args...]\n\nExample:\n  ghostctl exec test -- kubectl get pods\n\nNote: You can also use 'ghostctl connect test' to switch contexts globally.")
 	}
 
 	clusterName := args[0]
-	// args[1] should be "--", skip it
 	commandArgs := args[2:]
 
 	if len(commandArgs) == 0 {
