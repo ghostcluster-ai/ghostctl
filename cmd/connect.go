@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/ghostcluster-ai/ghostctl/internal/kubeconfig"
 	"github.com/ghostcluster-ai/ghostctl/internal/metadata"
@@ -23,17 +24,15 @@ var connectCmd = &cobra.Command{
 By default, outputs the export command that you can eval:
   eval $(ghostctl connect my-cluster)
 
-Or use 'source' to apply in current shell:
-  source <(ghostctl connect my-cluster)
+For automatic shell integration, use --set (one-time setup):
+  ghostctl connect my-cluster --set
+  source ~/.zshrc  (or ~/.bashrc)
+
+After setup, simply use:
+  ghostctl connect my-cluster
 
 Use --path-only to get just the kubeconfig path:
-  ghostctl connect my-cluster --path-only
-
-Use --set to update shell configuration files globally:
-  ghostctl connect my-cluster --set
-
-Note: For running commands with cluster context, use 'ghostctl exec' instead:
-  ghostctl exec test -- kubectl get pods`,
+  ghostctl connect my-cluster --path-only`,
 	Args: cobra.ExactArgs(1),
 	RunE: runConnectCmd,
 }
@@ -45,7 +44,7 @@ func init() {
 	)
 	connectCmd.Flags().BoolVar(
 		&connectSet, "set", false,
-		"update shell config files (~/.bashrc, ~/.zshrc) with KUBECONFIG export",
+		"add shell integration to your shell config (~/.bashrc, ~/.zshrc, etc.)",
 	)
 }
 
@@ -101,117 +100,165 @@ func setGlobalKubeconfig(clusterName, kubePath string, logger interface{ Info(ms
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	exportLine := fmt.Sprintf("export KUBECONFIG=%s", kubePath)
-	marker := "# ghostctl kubeconfig export"
-	newExport := fmt.Sprintf("%s\n%s", marker, exportLine)
+	// Detect current shell
+	shell := os.Getenv("SHELL")
+	shellName := filepath.Base(shell)
 
-	// Map of shell config files and their export syntax
-	shellConfigs := map[string]string{
-		filepath.Join(homeDir, ".bashrc"):              newExport, // bash on Linux
-		filepath.Join(homeDir, ".bash_profile"):        newExport, // bash on macOS
-		filepath.Join(homeDir, ".zshrc"):               newExport, // zsh
-		filepath.Join(homeDir, ".kshrc"):               newExport, // ksh
-		filepath.Join(homeDir, ".tcshrc"):              "setenv KUBECONFIG " + kubePath, // tcsh
-		filepath.Join(homeDir, ".config/fish/config.fish"): "set -gx KUBECONFIG " + kubePath, // fish
+	var configFile string
+	var shellInitContent string
+
+	switch shellName {
+	case "bash":
+		// Check if on macOS or Linux
+		bashProfile := filepath.Join(homeDir, ".bash_profile")
+		bashrc := filepath.Join(homeDir, ".bashrc")
+		if _, err := os.Stat(bashProfile); err == nil {
+			configFile = bashProfile
+		} else {
+			configFile = bashrc
+		}
+		shellInitContent = getBashShellInit()
+	case "zsh":
+		configFile = filepath.Join(homeDir, ".zshrc")
+		shellInitContent = getBashShellInit() // bash/zsh use same syntax
+	case "fish":
+		configFile = filepath.Join(homeDir, ".config/fish/config.fish")
+		shellInitContent = getFishShellInit()
+	default:
+		return fmt.Errorf("unsupported shell: %s", shellName)
 	}
 
-	updatedFiles := []string{}
+	// Read existing content
+	content := ""
+	if data, err := os.ReadFile(configFile); err == nil {
+		content = string(data)
+	}
 
-	for configFile, exportCmd := range shellConfigs {
-		// Check if file exists
-		fileInfo, err := os.Stat(configFile)
-		if err != nil {
-			// File doesn't exist, skip it
-			continue
+	marker := "# ghostctl shell integration"
+	updated := false
+
+	// Check if shell integration is already present
+	if !contains(content, marker) {
+		// Add shell integration
+		if content != "" && !endsWithNewline(content) {
+			content += "\n"
 		}
+		content += "\n" + shellInitContent + "\n"
+		updated = true
+	}
 
-		// Read existing content
-		content, err := os.ReadFile(configFile)
-		if err != nil {
-			continue
-		}
-
-		contentStr := string(content)
-
-		// Check if already has ghostctl export
-		if contains(contentStr, marker) {
-			continue // Already set
-		}
-
-		// Append the export
-		if contentStr != "" && !endsWithNewline(contentStr) {
-			contentStr += "\n"
-		}
-		contentStr += exportCmd + "\n"
-
-		// Write back
-		if err := os.WriteFile(configFile, []byte(contentStr), fileInfo.Mode()); err != nil {
+	// Write back if updated
+	if updated {
+		if err := os.WriteFile(configFile, []byte(content), 0644); err != nil {
 			return fmt.Errorf("failed to update %s: %w", configFile, err)
 		}
-
-		updatedFiles = append(updatedFiles, configFile)
-		if logger != nil {
-			logger.Info("Updated", "file", configFile)
-		}
 	}
 
-	if len(updatedFiles) == 0 {
-		fmt.Printf("⚠ No shell config files found. Update manually with:\n")
-		fmt.Printf("  export KUBECONFIG=%s\n", kubePath)
-		return nil
-	}
-
-	fmt.Printf("✓ KUBECONFIG for '%s' set in %d shell config file(s)\n", clusterName, len(updatedFiles))
-	for _, f := range updatedFiles {
-		fmt.Printf("  - %s\n", f)
-	}
-
-	// Detect current shell and suggest appropriate source command
-	shellSourceCmd := getShellSourceCommand(updatedFiles)
-	if shellSourceCmd != "" {
-		fmt.Printf("\n# Apply now in current shell:\n")
-		fmt.Printf("%s\n", shellSourceCmd)
-	} else {
-		fmt.Printf("\nRestart your terminal or run: source ~/.bashrc  (or appropriate shell config)\n")
-	}
+	fmt.Printf("✓ Shell integration added to: %s\n", configFile)
+	fmt.Printf("\n# To activate in current shell, run:\n")
+	fmt.Printf("source %s\n", configFile)
+	fmt.Printf("\n# After sourcing, you can simply use:\n")
+	fmt.Printf("ghostctl connect %s\n", clusterName)
 
 	return nil
 }
 
-// getShellSourceCommand returns the appropriate source command for the current shell
-func getShellSourceCommand(updatedFiles []string) string {
-	shell := os.Getenv("SHELL")
-	
-	// Map shells to their config files and source command format
-	shellMap := map[string]string{
-		"bash":   "source ~/.bashrc",
-		"zsh":    "source ~/.zshrc",
-		"ksh":    "source ~/.kshrc",
-		"tcsh":   "source ~/.tcshrc",
-		"fish":   "source ~/.config/fish/config.fish",
-	}
-
-	// Extract shell name from path (e.g., /bin/zsh -> zsh)
-	shellName := filepath.Base(shell)
-	
-	if cmd, ok := shellMap[shellName]; ok {
-		return cmd
-	}
-
-	// Fallback to first updated file
-	if len(updatedFiles) > 0 {
-		return fmt.Sprintf("source %s", updatedFiles[0])
-	}
-
-	return ""
-}
-
 func contains(s, substr string) bool {
-	return len(s) > 0 && len(substr) > 0 && (s == substr || len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr))
+	return len(s) >= len(substr) && (strings.Contains(s, substr))
 }
 
 func endsWithNewline(s string) bool {
 	return len(s) > 0 && s[len(s)-1] == '\n'
+}
+
+// getBashShellInit returns the shell integration content for bash/zsh
+func getBashShellInit() string {
+	return `# ghostctl shell integration for bash/zsh
+# This allows: ghostctl connect <cluster> (sets KUBECONFIG in current shell)
+
+_ghostctl_connect() {
+    local cluster="$1"
+    if [[ -z "$cluster" ]]; then
+        echo "Usage: ghostctl connect <cluster-name>"
+        return 1
+    fi
+    
+    local export_stmt=$(command ghostctl connect "$cluster" 2>/dev/null)
+    if [[ $? -eq 0 ]]; then
+        eval "$export_stmt"
+        echo "✓ Connected to cluster: $cluster"
+    else
+        echo "Error: Could not connect to cluster: $cluster"
+        return 1
+    fi
+}
+
+_ghostctl_disconnect() {
+    local restore_stmt=$(command ghostctl disconnect 2>/dev/null)
+    if [[ $? -eq 0 ]]; then
+        eval "$restore_stmt"
+        echo "✓ Disconnected from cluster"
+    else
+        echo "No previous kubeconfig to restore"
+        return 1
+    fi
+}
+
+ghostctl() {
+    if [[ "$1" == "connect" ]] && [[ ! "$2" =~ ^- ]]; then
+        shift
+        _ghostctl_connect "$@"
+    elif [[ "$1" == "disconnect" ]]; then
+        _ghostctl_disconnect
+    else
+        command ghostctl "$@"
+    fi
+}`
+}
+
+// getFishShellInit returns the shell integration content for fish
+func getFishShellInit() string {
+	return `# ghostctl shell integration for fish
+# This allows: ghostctl connect <cluster> (sets KUBECONFIG in current shell)
+
+function _ghostctl_connect
+    set cluster $argv[1]
+    if test -z "$cluster"
+        echo "Usage: ghostctl connect <cluster-name>"
+        return 1
+    end
+    
+    set export_stmt (command ghostctl connect "$cluster" 2>/dev/null)
+    if test $status -eq 0
+        eval "$export_stmt"
+        echo "✓ Connected to cluster: $cluster"
+    else
+        echo "Error: Could not connect to cluster: $cluster"
+        return 1
+    end
+end
+
+function _ghostctl_disconnect
+    set restore_stmt (command ghostctl disconnect 2>/dev/null)
+    if test $status -eq 0
+        eval "$restore_stmt"
+        echo "✓ Disconnected from cluster"
+    else
+        echo "No previous kubeconfig to restore"
+        return 1
+    end
+end
+
+function ghostctl
+    if test "$argv[1]" = "connect" -a -n "$argv[2]"
+        set argv $argv[2..-1]
+        _ghostctl_connect $argv
+    else if test "$argv[1]" = "disconnect"
+        _ghostctl_disconnect
+    else
+        command ghostctl $argv
+    end
+end`
 }
 
 // saveRootKubeconfig saves the current KUBECONFIG as the root (parent) on first connection

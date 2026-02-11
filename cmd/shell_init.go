@@ -55,40 +55,75 @@ _ghostctl_connect() {
     
     # Get the export statement and evaluate it
     local export_stmt=$(command ghostctl connect "$cluster" 2>/dev/null)
-    if [[ $? -eq 0 ]]; then
+    local exit_code=$?
+    if [[ $exit_code -eq 0 ]]; then
         eval "$export_stmt"
         echo "✓ Connected to cluster: $cluster"
     else
         echo "Error: Could not connect to cluster: $cluster"
+        return $exit_code
+    fi
+}
+
+_ghostctl_connect_set() {
+    local cluster="$1"
+    if [[ -z "$cluster" ]]; then
+        echo "Usage: ghostctl connect <cluster-name> --set"
         return 1
+    fi
+    
+    # Get the export statement from --set and evaluate it
+    local export_stmt=$(command ghostctl connect "$cluster" --set 2>/dev/null)
+    local exit_code=$?
+    if [[ $exit_code -eq 0 ]]; then
+        eval "$export_stmt"
+        echo "✓ Connected to cluster: $cluster"
+    else
+        echo "Error: Could not connect to cluster: $cluster"
+        return $exit_code
     fi
 }
 
 _ghostctl_disconnect() {
     # Get the restore statement and evaluate it
     local restore_stmt=$(command ghostctl disconnect 2>/dev/null)
-    if [[ $? -eq 0 ]]; then
+    local exit_code=$?
+    if [[ $exit_code -eq 0 ]]; then
         eval "$restore_stmt"
         echo "✓ Disconnected from cluster"
     else
         echo "No previous kubeconfig to restore"
-        return 1
+        return $exit_code
     fi
 }
 
 # Create a wrapper for ghostctl
 ghostctl() {
-    if [[ "$1" == "connect" ]] && [[ ! "$2" =~ ^- ]]; then
-        # If it's "ghostctl connect <cluster>", use our wrapper
-        shift
-        _ghostctl_connect "$@"
-    elif [[ "$1" == "disconnect" ]]; then
-        # If it's "ghostctl disconnect", use our wrapper
-        _ghostctl_disconnect
-    else
-        # Otherwise, use the real ghostctl command
-        command ghostctl "$@"
-    fi
+    case "$1" in
+        connect)
+            if [[ $# -lt 2 ]]; then
+                echo "Usage: ghostctl connect <cluster-name> [--set|--path-only]"
+                return 1
+            fi
+            # Check if --set or --path-only flags are used
+            if [[ "$3" == "--set" ]]; then
+                _ghostctl_connect_set "$2"
+            elif [[ "$3" == "--path-only" ]] || [[ "$2" == "--path-only" ]]; then
+                # For --path-only, just pass through to real command
+                command ghostctl "$@"
+            else
+                # Regular connect with eval
+                _ghostctl_connect "$2"
+            fi
+            ;;
+        disconnect)
+            _ghostctl_disconnect
+            ;;
+        *)
+            # Pass through all other commands to the real ghostctl
+            command ghostctl "$@"
+            ;;
+    esac
 }
 `
 
