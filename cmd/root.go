@@ -27,10 +27,11 @@ Create, manage, and destroy virtual Kubernetes clusters for experiments, PRs, an
 
 Examples:
   ghostctl init                           # Initialize Ghostcluster controller
-  ghostctl up --template default --ttl 1h # Create a new cluster
-  ghostctl list                           # List active clusters
-  ghostctl status <cluster-name>          # Check cluster status
-  ghostctl down <cluster-name>            # Destroy a cluster`,
+  ghostctl up my-cluster --ttl 1h         # Create a new cluster
+  ghostctl connect my-cluster             # Switch to the cluster
+  kubectl get pods                        # Use kubectl directly
+  ghostctl disconnect                     # Return to parent cluster
+  ghostctl down my-cluster                # Destroy a cluster`,,
 	Version: fmt.Sprintf("%s (commit: %s, built: %s)", Version, Commit, BuildTime),
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		if verbose {

@@ -50,22 +50,20 @@ func runStatusCmd(cmd *cobra.Command, args []string) error {
 	var status string
 	isReachable := false
 
+	// Check if pod is running
 	if err := vcluster.Status(clusterName, meta.Namespace); err == nil {
 		status = "running"
-		isReachable = true
-
-		// Verify kubeconfig works
+		
+		// Now verify we can actually reach the API server
 		kubeMgr, err := kubeconfig.NewManager()
 		if err == nil {
 			kubePath, err := kubeMgr.Get(clusterName, meta.Namespace)
 			if err == nil {
 				// Try to contact the API server
 				env := []string{"KUBECONFIG=" + kubePath}
-				env = append(env, "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
-				result, _ := shell.ExecuteCommandWithEnv(env, "kubectl", "cluster-info")
-				if result.ExitCode != 0 {
-					status = "not_ready"
-					isReachable = false
+				result, _ := shell.ExecuteCommandWithEnv(env, "kubectl", "cluster-info", "dump", "--output", "json")
+				if result.ExitCode == 0 {
+					isReachable = true
 				}
 			}
 		}

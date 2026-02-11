@@ -16,12 +16,13 @@ var upCmd = &cobra.Command{
 	Short: "Create a new ephemeral vCluster",
 	Long: `Create a new virtual Kubernetes cluster in the host Kubernetes cluster.
 
-The vCluster will be created in the ghostcluster namespace and can be accessed
-using the generated kubeconfig.
+The vCluster will be created in the ghostcluster namespace. Use 'ghostctl connect'
+to switch to the cluster context and interact with it using kubectl.
 
 Examples:
-  ghostctl up my-cluster              # Create cluster with auto-generated name
-  ghostctl up my-cluster --ttl 2h     # Create with 2 hour TTL`,
+  ghostctl up my-cluster              # Create cluster
+  ghostctl up my-cluster --ttl 2h     # Create with 2 hour TTL
+  ghostctl connect my-cluster         # Connect to the cluster`,
 	RunE: runUpCmd,
 }
 
@@ -113,8 +114,9 @@ func runUpCmd(cmd *cobra.Command, args []string) error {
 	fmt.Printf("\n✓ Cluster '%s' is ready!\n", clusterName)
 	fmt.Println("\nUseful commands:")
 	fmt.Printf("  ghostctl status %s               # Check cluster status\n", clusterName)
-	fmt.Printf("  ghostctl connect %s              # Show connection command\n", clusterName)
+	fmt.Printf("  ghostctl connect %s              # Switch to this cluster\n", clusterName)
 	fmt.Printf("  ghostctl exec %s -- kubectl ... # Run command in cluster\n", clusterName)
+	fmt.Printf("  ghostctl disconnect              # Return to parent cluster\n")
 	fmt.Printf("  ghostctl down %s                 # Destroy cluster\n", clusterName)
 
 	return nil

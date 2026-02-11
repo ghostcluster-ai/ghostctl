@@ -66,29 +66,28 @@ func Delete(name, namespace string) error {
 	return nil
 }
 
-// Status gets the status of a vCluster
+// Status checks if a vCluster pod is running
 func Status(name, namespace string) error {
-	if !shell.CommandExists("vcluster") {
-		return fmt.Errorf("vcluster CLI not found in PATH")
-	}
-
+	// Check if the vCluster pod is running using kubectl
 	args := []string{
-		"status", name,
+		"get", "pod",
 		"-n", namespace,
+		"-l", fmt.Sprintf("app=vcluster,release=%s", name),
+		"-o", "jsonpath={.items[0].status.phase}",
 	}
 
-	result, err := shell.ExecuteCommand("vcluster", args...)
+	result, err := shell.ExecuteCommand("kubectl", args...)
 	if err != nil {
-		return fmt.Errorf("failed to get vCluster status: %w", err)
+		return fmt.Errorf("failed to check vCluster pod: %w", err)
 	}
 
 	if result.ExitCode != 0 {
-		// Include command output to help diagnose why status reports non-zero
-		out := strings.TrimSpace(result.Stdout)
-		if out == "" {
-			out = "(no output)"
-		}
-		return fmt.Errorf("vCluster not ready or not found (exit code %d): %s", result.ExitCode, out)
+		return fmt.Errorf("vCluster pod not found")
+	}
+
+	phase := strings.TrimSpace(result.Stdout)
+	if phase != "Running" {
+		return fmt.Errorf("vCluster pod not running (phase: %s)", phase)
 	}
 
 	return nil

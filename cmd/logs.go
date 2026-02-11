@@ -16,7 +16,10 @@ var logsCmd = &cobra.Command{
 	Short: "Stream logs from a vCluster pod",
 	Long: `View and stream logs from pods in a vCluster.
 
-Uses kubectl logs under the hood, passing the appropriate kubeconfig.
+Note: You can also use 'ghostctl connect' to switch contexts and use kubectl directly:
+  ghostctl connect my-cluster
+  kubectl logs my-pod -f
+  ghostctl disconnect
 
 Examples:
   ghostctl logs my-cluster                               # Show available pods
