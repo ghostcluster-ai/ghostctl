@@ -2,8 +2,9 @@ class Ghostctl < Formula
   desc "CLI tool for managing ephemeral Kubernetes clusters using vCluster"
   homepage "https://github.com/ghostcluster-ai/ghostctl"
   url "https://github.com/ghostcluster-ai/ghostctl.git",
-      tag: "v1.0.2"
-  version "1.0.2"
+      branch: "main"
+  # tag: "v1.0.2"
+  version "1.0.2-dev"
   license "Apache-2.0"
 
   depends_on "go" => :build
