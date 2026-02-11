@@ -63,7 +63,6 @@ func init() {
 		disconnectCmd,
 		execCmd,
 		templatesCmd,
-		shellInitCmd,
 	)
 }
 

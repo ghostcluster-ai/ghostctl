@@ -2,55 +2,66 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 
+	"github.com/ghostcluster-ai/ghostctl/internal/kubeconfig"
 	"github.com/spf13/cobra"
+)
+
+var (
+	disconnectCleanup bool
 )
 
 var disconnectCmd = &cobra.Command{
 	Use:   "disconnect",
-	Short: "Disconnect from vCluster and restore parent kubeconfig",
-	Long: `Restore the parent kubeconfig before connecting to any vCluster.
+	Short: "Disconnect from vCluster and restore parent context",
+	Long: `Restore the parent kubeconfig context before connecting to a vCluster.
 
-This command restores the kubeconfig that was active before you first
-connected to a vCluster, regardless of how many nested clusters you've
-connected to.
+This restores the kubectl context that was active before you first
+connected to a vCluster.
 
 Examples:
-  ghostctl disconnect              # Restore parent KUBECONFIG`,
+  ghostctl disconnect              # Restore parent context
+  ghostctl disconnect --cleanup    # Also remove vCluster context from kubeconfig`,
 	RunE: runDisconnectCmd,
 }
 
+func init() {
+	disconnectCmd.Flags().BoolVar(
+		&disconnectCleanup, "cleanup", false,
+		"remove the vCluster context from kubeconfig",
+	)
+}
+
 func runDisconnectCmd(cmd *cobra.Command, args []string) error {
-	homeDir, err := os.UserHomeDir()
+	// Initialize kubeconfig manager
+	kubeMgr, err := kubeconfig.NewManager()
 	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
+		return fmt.Errorf("failed to create kubeconfig manager: %w", err)
 	}
 
-	ghostDir := filepath.Join(homeDir, ".ghost")
-	rootKubeconfigPath := filepath.Join(ghostDir, ".root_kubeconfig")
+	// Get current context before restoring (for cleanup)
+	currentContext := ""
+	if disconnectCleanup {
+		currentContext, _ = kubeMgr.GetCurrentContext()
+	}
 
-	// Try to read the root kubeconfig
-	rootKubeconfig, err := os.ReadFile(rootKubeconfigPath)
+	// Restore saved context
+	savedContext, err := kubeMgr.RestoreSavedContext()
 	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("not connected to any vCluster - nothing to disconnect from")
+		return fmt.Errorf("failed to restore context: %w", err)
+	}
+
+	fmt.Printf("✓ Disconnected from vCluster\n")
+	fmt.Printf("Context restored to: %s\n", savedContext)
+
+	// Optionally cleanup the vCluster context
+	if disconnectCleanup && currentContext != "" {
+		if err := kubeMgr.RemoveContext(currentContext); err != nil {
+			fmt.Printf("Warning: Could not remove context %s: %v\n", currentContext, err)
+		} else {
+			fmt.Printf("✓ Removed context: %s\n", currentContext)
 		}
-		return fmt.Errorf("failed to read root kubeconfig: %w", err)
 	}
-
-	rootConfig := string(rootKubeconfig)
-
-	// Output the unset or export statement
-	if rootConfig == "unset" {
-		fmt.Println("unset KUBECONFIG")
-	} else {
-		fmt.Printf("export KUBECONFIG=%s\n", rootConfig)
-	}
-
-	// Clean up root marker so next connection saves a new root
-	os.Remove(rootKubeconfigPath)
 
 	return nil
 }

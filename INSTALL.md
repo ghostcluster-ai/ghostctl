@@ -2,10 +2,28 @@
 
 ## Prerequisites
 
-- Go 1.21 or later
+- Go 1.21 or later (for building from source)
 - Kubernetes 1.24+ cluster (for host cluster)
 - `kubectl` configured to access your cluster
+- `vcluster` CLI (https://www.vcluster.com/docs/getting-started/setup)
 - `helm` 3.0+ (optional, for advanced deployments)
+
+## Quick Install
+
+### Using Homebrew (macOS/Linux)
+
+```bash
+# Add the tap
+brew tap ghostcluster-ai/ghostctl
+
+# Install (automatically installs kubectl and vcluster as dependencies)
+brew install ghostctl
+
+# Verify installation
+ghostctl --version
+```
+
+## Manual Installation
 
 ## Installation Methods
 

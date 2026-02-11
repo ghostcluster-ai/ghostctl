@@ -15,6 +15,25 @@ A full-featured CLI tool for managing ephemeral Kubernetes clusters using vClust
 
 ## Installation
 
+### Prerequisites
+
+- Kubernetes cluster (local or remote)
+- `kubectl` installed and configured
+- `vcluster` CLI installed ([installation guide](https://www.vcluster.com/docs/getting-started/setup))
+
+### Using Homebrew (Recommended)
+
+```bash
+# Add the tap
+brew tap ghostcluster-ai/ghostctl
+
+# Install ghostctl (automatically installs kubectl and vcluster)
+brew install ghostctl
+
+# Verify installation
+ghostctl --version
+```
+
 ### From Source
 
 ```bash
