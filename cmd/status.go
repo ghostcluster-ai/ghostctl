@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/ghostcluster-ai/ghostctl/internal/kubeconfig"
 	"github.com/ghostcluster-ai/ghostctl/internal/metadata"
@@ -59,10 +60,10 @@ func runStatusCmd(cmd *cobra.Command, args []string) error {
 		if err == nil {
 			kubePath, err := kubeMgr.Get(clusterName, meta.Namespace)
 			if err == nil {
-				// Try to contact the API server
+				// Try a simple kubectl command to verify API access
 				env := []string{"KUBECONFIG=" + kubePath}
-				result, _ := shell.ExecuteCommandWithEnv(env, "kubectl", "cluster-info", "dump", "--output", "json")
-				if result.ExitCode == 0 {
+				result, _ := shell.ExecuteCommandWithEnv(env, "kubectl", "get", "--raw", "/healthz")
+				if result.ExitCode == 0 && strings.Contains(result.Stdout, "ok") {
 					isReachable = true
 				}
 			}
