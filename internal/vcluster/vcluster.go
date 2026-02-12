@@ -2,7 +2,6 @@ package vcluster
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
 	"time"
 
