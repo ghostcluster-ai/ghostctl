@@ -55,16 +55,30 @@ func runStatusCmd(cmd *cobra.Command, args []string) error {
 	if err := vcluster.Status(clusterName, meta.Namespace); err == nil {
 		status = "running"
 		
-		// Now verify we can actually reach the API server
-		kubeMgr, err := kubeconfig.NewManager()
-		if err == nil {
-			kubePath, err := kubeMgr.Get(clusterName, meta.Namespace)
+		// Try to verify we can reach the API server
+		// First, try using the vcluster context if it exists in ~/.kube/config
+		contextName := "vcluster_" + clusterName
+		result, _ := shell.ExecuteCommand("kubectl", "config", "get-contexts", contextName, "--no-headers")
+		if result.ExitCode == 0 {
+			// Context exists, try to access it
+			result, _ := shell.ExecuteCommand("kubectl", "--context", contextName, "get", "--raw", "/healthz")
+			if result.ExitCode == 0 && strings.Contains(result.Stdout, "ok") {
+				isReachable = true
+			}
+		}
+		
+		// If context doesn't exist or fails, try using the cached kubeconfig
+		if !isReachable {
+			kubeMgr, err := kubeconfig.NewManager()
 			if err == nil {
-				// Try a simple kubectl command to verify API access
-				env := []string{"KUBECONFIG=" + kubePath}
-				result, _ := shell.ExecuteCommandWithEnv(env, "kubectl", "get", "--raw", "/healthz")
-				if result.ExitCode == 0 && strings.Contains(result.Stdout, "ok") {
-					isReachable = true
+				kubePath, err := kubeMgr.Get(clusterName, meta.Namespace)
+				if err == nil {
+					// Try a simple kubectl command to verify API access
+					env := []string{"KUBECONFIG=" + kubePath}
+					result, _ := shell.ExecuteCommandWithEnv(env, "kubectl", "get", "--raw", "/healthz")
+					if result.ExitCode == 0 && strings.Contains(result.Stdout, "ok") {
+						isReachable = true
+					}
 				}
 			}
 		}
