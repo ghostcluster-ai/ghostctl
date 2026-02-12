@@ -77,7 +77,6 @@ func Status(name, namespace string) error {
 	args := []string{
 		"list",
 		"-n", namespace,
-		"-o", "json",
 	}
 
 	result, err := shell.ExecuteCommand("vcluster", args...)
@@ -89,16 +88,21 @@ func Status(name, namespace string) error {
 		return fmt.Errorf("failed to check vCluster status")
 	}
 
-	// Check if our cluster is in the list and running
-	output := strings.ToLower(result.Stdout)
-	clusterRef := fmt.Sprintf(`"name":"%s"`, strings.ToLower(name))
-	
-	if !strings.Contains(output, clusterRef) {
-		return fmt.Errorf("vCluster not found")
+	// Parse the output to find our cluster
+	lines := strings.Split(strings.TrimSpace(result.Stdout), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "NAME") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) > 0 && fields[0] == name {
+			// Found the cluster - it's in the list so it exists
+			return nil
+		}
 	}
 
-	// If it's in the list, it's running (vcluster list only shows running clusters)
-	return nil
+	return fmt.Errorf("vCluster not found")
 }
 
 // GetKubeconfig retrieves the kubeconfig for a vCluster
