@@ -2,6 +2,7 @@ package vcluster
 
 import (
 	"fmt"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -66,30 +67,38 @@ func Delete(name, namespace string) error {
 	return nil
 }
 
-// Status checks if a vCluster pod is running
+// Status checks if a vCluster is running
 func Status(name, namespace string) error {
-	// Check if the vCluster pod is running using kubectl
-	args := []string{
-		"get", "pod",
-		"-n", namespace,
-		"-l", fmt.Sprintf("app=vcluster,release=%s", name),
-		"-o", "jsonpath={.items[0].status.phase}",
+	// Use vcluster list which always checks the host cluster
+	// regardless of current kubectl context
+	if !shell.CommandExists("vcluster") {
+		return fmt.Errorf("vcluster CLI not found in PATH")
 	}
 
-	result, err := shell.ExecuteCommand("kubectl", args...)
+	args := []string{
+		"list",
+		"-n", namespace,
+		"-o", "json",
+	}
+
+	result, err := shell.ExecuteCommand("vcluster", args...)
 	if err != nil {
-		return fmt.Errorf("failed to check vCluster pod: %w", err)
+		return fmt.Errorf("failed to list vClusters: %w", err)
 	}
 
 	if result.ExitCode != 0 {
-		return fmt.Errorf("vCluster pod not found")
+		return fmt.Errorf("failed to check vCluster status")
 	}
 
-	phase := strings.TrimSpace(result.Stdout)
-	if phase != "Running" {
-		return fmt.Errorf("vCluster pod not running (phase: %s)", phase)
+	// Check if our cluster is in the list and running
+	output := strings.ToLower(result.Stdout)
+	clusterRef := fmt.Sprintf(`"name":"%s"`, strings.ToLower(name))
+	
+	if !strings.Contains(output, clusterRef) {
+		return fmt.Errorf("vCluster not found")
 	}
 
+	// If it's in the list, it's running (vcluster list only shows running clusters)
 	return nil
 }
 
