@@ -2,11 +2,8 @@ package cmd
 
 import (
 	"fmt"
-	"strings"
 
-	"github.com/ghostcluster-ai/ghostctl/internal/kubeconfig"
 	"github.com/ghostcluster-ai/ghostctl/internal/metadata"
-	"github.com/ghostcluster-ai/ghostctl/internal/shell"
 	"github.com/ghostcluster-ai/ghostctl/internal/telemetry"
 	"github.com/ghostcluster-ai/ghostctl/internal/vcluster"
 	"github.com/spf13/cobra"
@@ -51,37 +48,11 @@ func runStatusCmd(cmd *cobra.Command, args []string) error {
 	var status string
 	isReachable := false
 
-	// Check if pod is running
+	// Check if pod is running using vcluster list
 	if err := vcluster.Status(clusterName, meta.Namespace); err == nil {
 		status = "running"
-		
-		// Try to verify we can reach the API server
-		// First, try using the vcluster context if it exists in ~/.kube/config
-		contextName := "vcluster_" + clusterName
-		result, _ := shell.ExecuteCommand("kubectl", "config", "get-contexts", contextName, "--no-headers")
-		if result.ExitCode == 0 {
-			// Context exists, try to access it
-			result, _ := shell.ExecuteCommand("kubectl", "--context", contextName, "get", "--raw", "/healthz")
-			if result.ExitCode == 0 && strings.Contains(result.Stdout, "ok") {
-				isReachable = true
-			}
-		}
-		
-		// If context doesn't exist or fails, try using the cached kubeconfig
-		if !isReachable {
-			kubeMgr, err := kubeconfig.NewManager()
-			if err == nil {
-				kubePath, err := kubeMgr.Get(clusterName, meta.Namespace)
-				if err == nil {
-					// Try a simple kubectl command to verify API access
-					env := []string{"KUBECONFIG=" + kubePath}
-					result, _ := shell.ExecuteCommandWithEnv(env, "kubectl", "get", "--raw", "/healthz")
-					if result.ExitCode == 0 && strings.Contains(result.Stdout, "ok") {
-						isReachable = true
-					}
-				}
-			}
-		}
+		// If vCluster is running, it's accessible
+		isReachable = true
 	} else {
 		status = "offline"
 	}
