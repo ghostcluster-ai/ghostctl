@@ -1,0 +1,10 @@
+name: default
+description: Balanced resources for general development workloads
+labels:
+  tier: standard
+  workload: general
+
+cpu: "2"
+memory: 4Gi
+storage: 20Gi
+ttl: 1h

@@ -16,13 +16,19 @@ const (
 
 // ClusterMetadata represents metadata about a managed cluster
 type ClusterMetadata struct {
-	Name            string    `json:"name"`
-	Namespace       string    `json:"namespace"`
-	CreatedAt       time.Time `json:"createdAt"`
-	TTL             string    `json:"ttl,omitempty"`
-	KubeconfigPath  string    `json:"kubeconfigPath"`
-	HostCluster     string    `json:"hostCluster"`
-	Template        string    `json:"template,omitempty"`
+	Name            string            `json:"name"`
+	Namespace       string            `json:"namespace"`
+	CreatedAt       time.Time         `json:"createdAt"`
+	TTL             string            `json:"ttl,omitempty"`
+	KubeconfigPath  string            `json:"kubeconfigPath"`
+	HostCluster     string            `json:"hostCluster"`
+	Template        string            `json:"template,omitempty"`
+	CPU             string            `json:"cpu,omitempty"`
+	Memory          string            `json:"memory,omitempty"`
+	Storage         string            `json:"storage,omitempty"`
+	GPU             int               `json:"gpu,omitempty"`
+	GPUType         string            `json:"gpuType,omitempty"`
+	Labels          map[string]string `json:"labels,omitempty"`
 }
 
 // Store manages the metadata store

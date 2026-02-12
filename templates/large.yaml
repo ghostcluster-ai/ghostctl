@@ -1,0 +1,10 @@
+name: large
+description: High-resource cluster for intensive workloads
+labels:
+  tier: premium
+  workload: heavy
+
+cpu: "8"
+memory: 32Gi
+storage: 100Gi
+ttl: 4h

@@ -1,0 +1,10 @@
+name: minimal
+description: Minimal resources for testing and quick experiments
+labels:
+  tier: basic
+  workload: test
+
+cpu: "1"
+memory: 2Gi
+storage: 10Gi
+ttl: 30m

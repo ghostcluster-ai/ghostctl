@@ -1,0 +1,13 @@
+name: gpu
+description: GPU-accelerated workload for ML/AI training and inference
+labels:
+  tier: premium
+  workload: ml
+  gpu: enabled
+
+cpu: "4"
+memory: 16Gi
+storage: 50Gi
+gpu: 1
+gpuType: nvidia-t4
+ttl: 2h

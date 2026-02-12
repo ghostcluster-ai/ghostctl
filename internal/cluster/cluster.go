@@ -27,8 +27,23 @@ type Config struct {
 	TTL       string
 	Memory    string
 	CPU       string
+	Storage   string
 	FromPR    string
 	Namespace string
+	Labels    map[string]string
+}
+
+// CreateOptions represents options for creating a cluster
+type CreateOptions struct {
+	Name      string
+	Namespace string
+	CPU       string
+	Memory    string
+	Storage   string
+	GPU       int
+	GPUType   string
+	TTL       string
+	Labels    map[string]string
 }
 
 // ClusterInfo represents information about a cluster
