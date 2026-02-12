@@ -1,0 +1,46 @@
+# Example Terraform Variables Configuration
+# Copy this file to terraform.tfvars and fill in your values
+# WARNING: DO NOT commit terraform.tfvars to version control!
+
+# GitHub Configuration
+# github_token = "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"  # GitHub Personal Access Token
+# github_owner = "acme-corp"                                 # Your GitHub org or username
+# repository_name = "my-application"                         # Target repository name
+
+# Kubernetes Cluster Configuration
+# Extract your kubeconfig with:
+#   kubectl config view --minify --flatten > /tmp/kubeconfig.yaml
+# Then set it as a multi-line string or use environment variable:
+#   export TF_VAR_ghostcluster_kubeconfig=$(cat /tmp/kubeconfig.yaml)
+
+# ghostcluster_kubeconfig = <<-EOF
+#   apiVersion: v1
+#   clusters:
+#   - cluster:
+#       certificate-authority-data: LS0tLS...
+#       server: https://kubernetes.example.com:6443
+#     name: my-cluster
+#   contexts:
+#   - context:
+#       cluster: my-cluster
+#       user: my-user
+#     name: my-context
+#   current-context: my-context
+#   kind: Config
+#   preferences: {}
+#   users:
+#   - name: my-user
+#     user:
+#       token: eyJhbGciOiJS...
+# EOF
+
+# Optional: Override defaults
+# cluster_namespace = "pr-environments"  # Custom namespace for vClusters
+# default_ttl = "4h"                     # Longer default TTL
+# default_template = "minimal"           # Use minimal template by default
+
+# Alternative: Use environment variables (recommended for CI/CD)
+# export TF_VAR_github_token=ghp_xxxxx
+# export TF_VAR_github_owner=acme-corp
+# export TF_VAR_repository_name=my-app
+# export TF_VAR_ghostcluster_kubeconfig=$(cat /tmp/kubeconfig.yaml)

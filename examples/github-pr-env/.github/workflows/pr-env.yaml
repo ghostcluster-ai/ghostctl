@@ -1,0 +1,258 @@
+name: PR vCluster Environment
+
+# Automatically create/destroy ephemeral Kubernetes clusters for pull requests
+# using ghostctl and vCluster
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    # Optional: Limit to specific branches
+    # branches:
+    #   - main
+    #   - develop
+
+# Optional: Limit concurrent environments
+# concurrency:
+#   group: pr-env-${{ github.event.number }}
+#   cancel-in-progress: true
+
+env:
+  # ghostctl configuration
+  GHOSTCLUSTER_NAMESPACE: ghostcluster
+  CLUSTER_NAME: pr-${{ github.event.number }}
+  
+jobs:
+  # Job 1: Create or update PR environment
+  create-env:
+    name: Create PR Environment
+    runs-on: ubuntu-latest
+    # Only run when PR is opened, updated, or reopened (not closed)
+    if: github.event.action != 'closed'
+    
+    # Optional: Use GitHub environment for deployment tracking
+    environment:
+      name: pr-preview
+      url: https://pr-${{ github.event.number }}.example.com  # Customize with your ingress URL
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Install vcluster CLI
+        run: |
+          curl -L -o vcluster "https://github.com/loft-sh/vcluster/releases/latest/download/vcluster-linux-amd64"
+          chmod +x vcluster
+          sudo mv vcluster /usr/local/bin/
+          vcluster --version
+
+      - name: Install ghostctl
+        run: |
+          # Option 1: Install from Homebrew (if available in CI)
+          # brew install ghostcluster-ai/tap/ghostctl
+          
+          # Option 2: Download latest release
+          curl -L -o ghostctl "https://github.com/ghostcluster-ai/ghostctl/releases/latest/download/ghostctl-linux-amd64"
+          chmod +x ghostctl
+          sudo mv ghostctl /usr/local/bin/
+          ghostctl version || echo "ghostctl installed"
+
+      - name: Configure kubeconfig
+        env:
+          KUBECONFIG_CONTENT: ${{ secrets.GHOSTCLUSTER_KUBECONFIG }}
+        run: |
+          # Create .kube directory
+          mkdir -p $HOME/.kube
+          
+          # Write kubeconfig from secret
+          echo "$KUBECONFIG_CONTENT" > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+          
+          # Verify connectivity to host cluster
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Initialize ghostctl (first time setup)
+        run: |
+          # Initialize ghostctl in the host cluster namespace
+          # This is idempotent - safe to run multiple times
+          ghostctl init --namespace $GHOSTCLUSTER_NAMESPACE || true
+
+      - name: Create or update vCluster
+        run: |
+          # Check if cluster already exists
+          if ghostctl status $CLUSTER_NAME 2>/dev/null; then
+            echo "✓ vCluster $CLUSTER_NAME already exists"
+          else
+            echo "Creating vCluster $CLUSTER_NAME..."
+            
+            # Create vCluster with default template and 2h TTL
+            # Customize template and TTL as needed:
+            # --template minimal  : Minimal resources (1 CPU, 2Gi RAM)
+            # --template default  : Balanced resources (2 CPU, 4Gi RAM)
+            # --template gpu      : GPU-enabled (4 CPU, 16Gi RAM, 1 GPU)
+            # --template large    : High resources (8 CPU, 32Gi RAM)
+            ghostctl up $CLUSTER_NAME \
+              --template default \
+              --ttl 2h
+            
+            echo "✓ vCluster $CLUSTER_NAME created successfully"
+          fi
+
+      - name: Verify cluster status
+        run: |
+          # Display cluster information
+          ghostctl status $CLUSTER_NAME
+          ghostctl list
+
+      - name: Connect to vCluster and verify
+        run: |
+          # Connect to the vCluster
+          ghostctl connect $CLUSTER_NAME
+          
+          # Verify we're in the vCluster
+          kubectl cluster-info
+          kubectl get nodes
+          
+          # Return to host cluster
+          ghostctl disconnect
+
+      # Optional: Deploy your application
+      # - name: Deploy application
+      #   run: |
+      #     # Connect to PR vCluster
+      #     ghostctl connect $CLUSTER_NAME
+      #     
+      #     # Deploy your application
+      #     kubectl apply -f k8s/deployment.yaml
+      #     kubectl apply -f k8s/service.yaml
+      #     
+      #     # Wait for deployment to be ready
+      #     kubectl wait --for=condition=available deployment/myapp --timeout=300s
+      #     
+      #     # Get service information
+      #     kubectl get services
+      #     
+      #     # Disconnect
+      #     ghostctl disconnect
+
+      # Optional: Run tests in the PR environment
+      # - name: Run integration tests
+      #   run: |
+      #     ghostctl connect $CLUSTER_NAME
+      #     kubectl apply -f test/fixtures.yaml
+      #     npm run test:integration
+      #     ghostctl disconnect
+
+      # Optional: Comment on PR with environment info
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const clusterName = process.env.CLUSTER_NAME;
+            const body = `## 🚀 PR Environment Ready
+            
+            Your ephemeral Kubernetes cluster is ready!
+            
+            **Cluster:** \`${clusterName}\`
+            **Namespace:** \`ghostcluster\`
+            **TTL:** 2 hours (auto-cleanup)
+            
+            ### Access Your Environment
+            
+            \`\`\`bash
+            # Install ghostctl
+            brew install ghostcluster-ai/tap/ghostctl
+            
+            # Connect to your PR cluster
+            ghostctl connect ${clusterName}
+            
+            # Run kubectl commands
+            kubectl get pods
+            
+            # Disconnect when done
+            ghostctl disconnect
+            \`\`\`
+            
+            ### Status
+            - ✅ vCluster created
+            - ✅ Ready for deployment
+            
+            The cluster will be automatically destroyed when this PR is closed or after 2 hours.
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+  # Job 2: Destroy PR environment when PR is closed
+  destroy-env:
+    name: Destroy PR Environment
+    runs-on: ubuntu-latest
+    # Only run when PR is closed or merged
+    if: github.event.action == 'closed'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Install vcluster CLI
+        run: |
+          curl -L -o vcluster "https://github.com/loft-sh/vcluster/releases/latest/download/vcluster-linux-amd64"
+          chmod +x vcluster
+          sudo mv vcluster /usr/local/bin/
+
+      - name: Install ghostctl
+        run: |
+          curl -L -o ghostctl "https://github.com/ghostcluster-ai/ghostctl/releases/latest/download/ghostctl-linux-amd64"
+          chmod +x ghostctl
+          sudo mv ghostctl /usr/local/bin/
+
+      - name: Configure kubeconfig
+        env:
+          KUBECONFIG_CONTENT: ${{ secrets.GHOSTCLUSTER_KUBECONFIG }}
+        run: |
+          mkdir -p $HOME/.kube
+          echo "$KUBECONFIG_CONTENT" > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
+      - name: Destroy vCluster
+        run: |
+          # Check if cluster exists before trying to destroy
+          if ghostctl status $CLUSTER_NAME 2>/dev/null; then
+            echo "Destroying vCluster $CLUSTER_NAME..."
+            ghostctl down $CLUSTER_NAME
+            echo "✓ vCluster $CLUSTER_NAME destroyed"
+          else
+            echo "vCluster $CLUSTER_NAME not found (may have been auto-cleaned by TTL)"
+          fi
+
+      - name: Verify cleanup
+        run: |
+          # List remaining clusters
+          ghostctl list || true
+
+      # Optional: Comment on PR about cleanup
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const clusterName = process.env.CLUSTER_NAME;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🧹 PR Environment Cleaned Up\n\nCluster \`${clusterName}\` has been destroyed.`
+            });
