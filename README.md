@@ -403,7 +403,7 @@ For bugs, features, and questions:
 
 - 📝 Open an [Issue](https://github.com/ghostcluster-ai/ghostctl/issues)
 - 💬 Start a [Discussion](https://github.com/ghostcluster-ai/ghostctl/discussions)
-- 📧 Email: support@ghostcluster.ai
+- 📧 Email: k@ghostcluster.dev
 
 ## Roadmap
 
