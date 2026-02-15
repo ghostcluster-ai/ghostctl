@@ -1,13 +1,15 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
+	"strings"
 
-	"github.com/ghostcluster-ai/ghostctl/internal/kubeconfig"
-	"github.com/ghostcluster-ai/ghostctl/internal/metadata"
-	"github.com/ghostcluster-ai/ghostctl/internal/shell"
+	"github.com/ghostcluster-ai/ghostctl/internal/config"
 	"github.com/ghostcluster-ai/ghostctl/internal/telemetry"
+	"github.com/ghostcluster-ai/ghostctl/internal/vcluster"
 	"github.com/spf13/cobra"
 )
 
@@ -69,31 +71,31 @@ func runExecCmd(cmd *cobra.Command, args []string) error {
 		"command", commandArgs[0],
 	)
 
-	// Initialize metadata store
-	metaStore, err := metadata.NewStore()
+	cfg, err := config.Load()
 	if err != nil {
-		logger.Error("Failed to initialize metadata store", "error", err)
-		return fmt.Errorf("failed to initialize metadata store: %w", err)
+		logger.Error("Failed to load config", "error", err)
+		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Get cluster metadata
-	meta, err := metaStore.Get(clusterName)
-	if err != nil {
-		logger.Error("Cluster not found", "name", clusterName)
-		return fmt.Errorf("cluster %q not found in local registry", clusterName)
+	namespace := cfg.Namespace
+	if namespace == "" {
+		namespace = vcluster.DefaultNamespace
 	}
 
-	// Get kubeconfig
-	kubeMgr, err := kubeconfig.NewManager()
+	kubeMgr, err := vcluster.NewKubeconfigManager("", namespace)
 	if err != nil {
 		logger.Error("Failed to create kubeconfig manager", "error", err)
 		return fmt.Errorf("failed to create kubeconfig manager: %w", err)
 	}
 
-	kubePath, err := kubeMgr.Get(clusterName, meta.Namespace)
+	ref := vcluster.ClusterRef{Name: clusterName, Namespace: namespace}
+	kubePath, err := kubeMgr.GetOrCreateKubeconfig(ref)
 	if err != nil {
 		logger.Error("Failed to get kubeconfig", "error", err)
-		return fmt.Errorf("failed to get kubeconfig for cluster %q: %w", clusterName, err)
+		if strings.Contains(err.Error(), "vcluster CLI not found") {
+			return err
+		}
+		return fmt.Errorf("virtual cluster %q not found in namespace %q; ensure it exists or run 'ghostctl up %s' first: %w", clusterName, namespace, clusterName, err)
 	}
 
 	// Set up environment with kubeconfig
@@ -101,14 +103,19 @@ func runExecCmd(cmd *cobra.Command, args []string) error {
 	env = append(env, "KUBECONFIG="+kubePath)
 
 	// Execute command with streaming output
-	exitCode, err := shell.ExecuteCommandStreamingWithEnv(env, commandArgs[0], commandArgs[1:]...)
-	if err != nil {
-		logger.Error("Failed to execute command", "error", err)
-		return err
-	}
+	runCmd := exec.Command(commandArgs[0], commandArgs[1:]...)
+	runCmd.Env = env
+	runCmd.Stdout = os.Stdout
+	runCmd.Stderr = os.Stderr
+	runCmd.Stdin = os.Stdin
 
-	if exitCode != 0 {
-		return fmt.Errorf("command exited with code %d", exitCode)
+	if err := runCmd.Run(); err != nil {
+		logger.Error("Failed to execute command", "error", err)
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			os.Exit(exitErr.ExitCode())
+		}
+		return fmt.Errorf("failed to execute command: %w", err)
 	}
 
 	return nil

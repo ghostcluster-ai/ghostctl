@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ghostcluster-ai/ghostctl/internal/config"
 	"github.com/ghostcluster-ai/ghostctl/internal/kubeconfig"
 	"github.com/ghostcluster-ai/ghostctl/internal/metadata"
 	"github.com/ghostcluster-ai/ghostctl/internal/telemetry"
@@ -42,21 +43,35 @@ func runDownCmd(cmd *cobra.Command, args []string) error {
 	logger := telemetry.GetLogger()
 	clusterName := args[0]
 
+	cfg, err := config.Load()
+	if err != nil {
+		logger.Error("Failed to load config", "error", err)
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	namespace := cfg.Namespace
+	if namespace == "" {
+		namespace = vcluster.DefaultNamespace
+	}
+
 	// Initialize metadata store
+	var meta *metadata.ClusterMetadata
 	metaStore, err := metadata.NewStore()
 	if err != nil {
-		logger.Error("Failed to initialize metadata store", "error", err)
-		return fmt.Errorf("failed to initialize metadata store: %w", err)
+		logger.Warn("Failed to initialize metadata store", "error", err)
 	}
 
 	// Check if cluster exists in metadata
-	meta, err := metaStore.Get(clusterName)
-	if err != nil {
-		logger.Error("Cluster not found", "name", clusterName)
-		return fmt.Errorf("cluster %q not found in local registry", clusterName)
+	if metaStore != nil {
+		meta, err = metaStore.Get(clusterName)
+		if err != nil {
+			logger.Info("Local metadata for cluster not found; proceeding with live deletion", "name", clusterName)
+		} else if meta.Namespace != "" {
+			namespace = meta.Namespace
+		}
 	}
 
-	logger.Info("Destroying vCluster", "name", clusterName, "namespace", meta.Namespace)
+	logger.Info("Destroying vCluster", "name", clusterName, "namespace", namespace)
 
 	// Confirm deletion
 	if !force {
@@ -76,7 +91,7 @@ func runDownCmd(cmd *cobra.Command, args []string) error {
 
 	// Delete the vCluster
 	logger.Info("Deleting vCluster from Kubernetes")
-	if err := vcluster.Delete(clusterName, meta.Namespace); err != nil {
+	if err := vcluster.Delete(clusterName, namespace); err != nil {
 		logger.Error("Failed to delete vCluster", "error", err)
 		return fmt.Errorf("failed to delete vCluster: %w", err)
 	}
@@ -91,9 +106,11 @@ func runDownCmd(cmd *cobra.Command, args []string) error {
 	}
 
 	// Remove from metadata store
-	if err := metaStore.Remove(clusterName); err != nil {
-		logger.Error("Failed to remove cluster metadata", "error", err)
-		// Don't fail here, cluster was deleted from k8s
+	if metaStore != nil {
+		if err := metaStore.Remove(clusterName); err != nil {
+			logger.Error("Failed to remove cluster metadata", "error", err)
+			// Don't fail here, cluster was deleted from k8s
+		}
 	}
 
 	logger.Info("✓ vCluster destroyed successfully", "name", clusterName)

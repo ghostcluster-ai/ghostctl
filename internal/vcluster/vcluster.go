@@ -46,7 +46,7 @@ func Create(name, namespace string) error {
 // Delete deletes a vCluster using the vcluster CLI
 func Delete(name, namespace string) error {
 	if !shell.CommandExists("vcluster") {
-		return fmt.Errorf("vcluster CLI not found in PATH")
+		return fmt.Errorf("vcluster CLI not found in PATH. Please install vCluster: https://www.vcluster.com/docs/getting-started/setup")
 	}
 
 	args := []string{
@@ -71,7 +71,7 @@ func Status(name, namespace string) error {
 	// Use vcluster list which always checks the host cluster
 	// regardless of current kubectl context
 	if !shell.CommandExists("vcluster") {
-		return fmt.Errorf("vcluster CLI not found in PATH")
+		return fmt.Errorf("vcluster CLI not found in PATH. Please install vCluster: https://www.vcluster.com/docs/getting-started/setup")
 	}
 
 	args := []string{
@@ -108,7 +108,7 @@ func Status(name, namespace string) error {
 // GetKubeconfig retrieves the kubeconfig for a vCluster
 func GetKubeconfig(name, namespace string) (string, error) {
 	if !shell.CommandExists("vcluster") {
-		return "", fmt.Errorf("vcluster CLI not found in PATH")
+		return "", fmt.Errorf("vcluster CLI not found in PATH. Please install vCluster: https://www.vcluster.com/docs/getting-started/setup")
 	}
 
 	args := []string{
@@ -189,7 +189,7 @@ func IsReady(name, namespace string, timeout time.Duration) error {
 // List lists all vClusters in a namespace
 func List(namespace string) ([]string, error) {
 	if !shell.CommandExists("vcluster") {
-		return nil, fmt.Errorf("vcluster CLI not found in PATH")
+		return nil, fmt.Errorf("vcluster CLI not found in PATH. Please install vCluster: https://www.vcluster.com/docs/getting-started/setup")
 	}
 
 	args := []string{
