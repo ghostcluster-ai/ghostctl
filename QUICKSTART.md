@@ -120,7 +120,7 @@ make all            # Run all checks
 | [INSTALL.md](INSTALL.md) | Installation from source and binaries |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute code |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | Architecture and development guide |
-| [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) | Detailed file-by-file breakdown |
+| [docs/notes/PROJECT_SUMMARY.md](docs/notes/PROJECT_SUMMARY.md) | Detailed file-by-file breakdown |
 
 ## 💡 Key Features
 

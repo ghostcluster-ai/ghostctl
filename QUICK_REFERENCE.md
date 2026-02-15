@@ -14,8 +14,8 @@
 | [INSTALL.md](INSTALL.md) | Installation guide |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | Architecture & patterns |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contributing guidelines |
-| [CHECKLIST.md](CHECKLIST.md) | Feature checklist |
-| [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) | Detailed breakdown |
+| [docs/notes/CHECKLIST.md](docs/notes/CHECKLIST.md) | Feature checklist |
+| [docs/notes/PROJECT_SUMMARY.md](docs/notes/PROJECT_SUMMARY.md) | Detailed breakdown |
 
 ## ⚡ Quick Start Commands
 
@@ -203,8 +203,8 @@ ghostctl --help
 - **How to Install?** → Read [INSTALL.md](INSTALL.md)
 - **How it Works?** → Read [DEVELOPMENT.md](DEVELOPMENT.md)
 - **Want to Contribute?** → Read [CONTRIBUTING.md](CONTRIBUTING.md)
-- **What's Included?** → Read [CHECKLIST.md](CHECKLIST.md)
-- **Full Details?** → Read [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md)
+- **What's Included?** → Read [docs/notes/CHECKLIST.md](docs/notes/CHECKLIST.md)
+- **Full Details?** → Read [docs/notes/PROJECT_SUMMARY.md](docs/notes/PROJECT_SUMMARY.md)
 
 ## 💡 Tips
 
